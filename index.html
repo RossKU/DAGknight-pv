@@ -587,19 +587,24 @@
             updateLoadingText('Loading Kaspa SDK...');
 
             try {
-                // Dynamic import of Kaspa WASM SDK
-                const kaspa = await import('https://cdn.jsdelivr.net/npm/kaspa-wasm@0.15.1/web/kaspa/kaspa.js');
-                await kaspa.default();
+                // Dynamic import of local Kaspa WASM SDK
+                const kaspa = await import('./kaspa-core.js');
+                console.log('kaspa-core.js imported');
+
+                // Initialize WASM binary
+                await kaspa.default({ module_or_path: './kaspa-core_bg.wasm' });
+                console.log('WASM binary initialized');
+
+                // Store kaspa module in state for later use
+                State.kaspa = kaspa;
 
                 updateLoadingText('Connecting to network...');
 
                 // Create RPC client
-                const { RpcClient, Resolver, NetworkId } = kaspa;
-
-                const resolver = new Resolver();
-                State.rpcClient = new RpcClient({
+                const resolver = new kaspa.Resolver();
+                State.rpcClient = new kaspa.RpcClient({
                     resolver,
-                    networkId: NetworkId.Mainnet,
+                    networkId: 'mainnet',
                 });
 
                 // Connect
@@ -617,7 +622,7 @@
                 DOM.blueScore.textContent = Number(info.virtualDaaScore).toLocaleString();
 
                 // Subscribe to new blocks
-                await subscribeToBlocks(kaspa);
+                await subscribeToBlocks();
 
                 return kaspa;
             } catch (error) {
@@ -627,25 +632,19 @@
             }
         }
 
-        async function subscribeToBlocks(kaspa) {
+        async function subscribeToBlocks() {
             updateLoadingText('Subscribing to blocks...');
 
             // Subscribe to block added notifications
             State.rpcClient.addEventListener('block-added', async (event) => {
                 if (State.isPaused) return;
 
-                const blockHash = event.data.block.header.hash;
-
                 try {
-                    // Get full block info
-                    const blockInfo = await State.rpcClient.getBlock({
-                        hash: blockHash,
-                        includeTransactions: false,
-                    });
-
-                    addBlock(blockInfo.block);
+                    const block = event.data.block;
+                    // block-added event already contains full block info
+                    addBlock(block);
                 } catch (error) {
-                    console.warn('Failed to get block:', blockHash, error);
+                    console.warn('Failed to process block:', error);
                 }
             });
 
