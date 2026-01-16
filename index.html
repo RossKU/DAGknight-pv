@@ -327,11 +327,7 @@
         // ------------------------------------------------------------
         const State = {
             app: null,
-            containers: {
-                edges: null,
-                blocks: null,
-                vspc: null,
-            },
+            graphics: null,  // Will be initialized in initPixi()
             rpcClient: null,
             isConnected: false,
             isPaused: false,
@@ -370,6 +366,8 @@
                 frameCount: 0,
                 lastFpsUpdate: 0,
                 drawCalls: 0,
+                visibleBlocks: 0,
+                edgeCount: 0,
             },
         };
 
@@ -413,14 +411,19 @@
 
             DOM.container.appendChild(State.app.canvas);
 
-            // Create containers (layered)
-            State.containers.edges = new PIXI.Container();
-            State.containers.blocks = new PIXI.Container();
-            State.containers.vspc = new PIXI.Container();
+            // Create Graphics objects ONCE (reused every frame)
+            State.graphics = {
+                edges: new PIXI.Graphics(),
+                blueBlocks: new PIXI.Graphics(),
+                redBlocks: new PIXI.Graphics(),
+                vspc: new PIXI.Graphics(),
+            };
 
-            State.app.stage.addChild(State.containers.edges);
-            State.app.stage.addChild(State.containers.blocks);
-            State.app.stage.addChild(State.containers.vspc);
+            // Add to stage (layered: edges behind blocks)
+            State.app.stage.addChild(State.graphics.edges);
+            State.app.stage.addChild(State.graphics.blueBlocks);
+            State.app.stage.addChild(State.graphics.redBlocks);
+            State.app.stage.addChild(State.graphics.vspc);
 
             // Store viewport dimensions
             State.viewport.width = State.app.screen.width;
@@ -465,67 +468,92 @@
         }
 
         // ------------------------------------------------------------
-        // DAG Rendering
+        // DAG Rendering (Optimized: reuse Graphics objects)
         // ------------------------------------------------------------
         function renderDAG() {
-            const { blocks, edges, vspc } = State.containers;
+            const { edges, blueBlocks, redBlocks, vspc } = State.graphics;
 
-            // Clear previous frame
-            blocks.removeChildren();
-            edges.removeChildren();
-            vspc.removeChildren();
+            // Clear previous frame (reuse same objects)
+            edges.clear();
+            blueBlocks.clear();
+            redBlocks.clear();
+            vspc.clear();
 
             if (State.blockCount === 0) return;
 
-            // Create graphics for edges (batched)
-            const edgeGraphics = new PIXI.Graphics();
+            const { x, y, color, size, isBlue, parentCount, parentIndices } = State.blockData;
+            const { zoom, width, height } = State.viewport;
+            const vpX = State.viewport.x;
+            const vpY = State.viewport.y;
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
 
-            // Render blocks and collect edge data
-            const blockSprites = [];
+            let visibleCount = 0;
+            let edgeCount = 0;
 
+            // First pass: draw edges (behind blocks)
             for (let i = 0; i < State.blockCount; i++) {
-                const x = State.blockData.x[i];
-                const y = State.blockData.y[i];
-                const color = State.blockData.color[i];
-                const size = State.blockData.size[i];
+                const screenX = (x[i] - vpX) * zoom + halfWidth;
+                const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (with margin)
-                const screenX = (x - State.viewport.x) * State.viewport.zoom + State.viewport.width / 2;
-                const screenY = (y - State.viewport.y) * State.viewport.zoom + State.viewport.height / 2;
-
-                if (screenX < -50 || screenX > State.viewport.width + 50 ||
-                    screenY < -50 || screenY > State.viewport.height + 50) {
+                // Skip if outside viewport
+                if (screenX < -100 || screenX > width + 100 ||
+                    screenY < -100 || screenY > height + 100) {
                     continue;
                 }
 
-                // Draw block
-                const block = new PIXI.Graphics();
-                block.rect(-size/2, -size/2, size, size);
-                block.fill(color);
-                block.position.set(screenX, screenY);
-                blocks.addChild(block);
-
                 // Draw edges to parents
-                const parentCount = State.blockData.parentCount[i];
-                for (let p = 0; p < parentCount; p++) {
-                    const parentIdx = State.blockData.parentIndices[i * 6 + p];
-                    if (parentIdx >= 0 && parentIdx < State.blockCount) {
-                        const px = State.blockData.x[parentIdx];
-                        const py = State.blockData.y[parentIdx];
-                        const parentScreenX = (px - State.viewport.x) * State.viewport.zoom + State.viewport.width / 2;
-                        const parentScreenY = (py - State.viewport.y) * State.viewport.zoom + State.viewport.height / 2;
+                const pCount = parentCount[i];
+                for (let p = 0; p < pCount; p++) {
+                    const parentIdx = parentIndices[i * 6 + p];
+                    if (parentIdx >= 0) {
+                        const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
+                        const parentScreenY = (y[parentIdx] - vpY) * zoom + halfHeight;
 
-                        edgeGraphics.moveTo(screenX, screenY);
-                        edgeGraphics.lineTo(parentScreenX, parentScreenY);
+                        edges.moveTo(screenX, screenY);
+                        edges.lineTo(parentScreenX, parentScreenY);
+                        edgeCount++;
                     }
                 }
             }
 
-            // Stroke all edges at once (batched)
-            edgeGraphics.stroke({ width: 1, color: CONFIG.COLORS.EDGE, alpha: 0.5 });
-            edges.addChild(edgeGraphics);
+            // Stroke all edges at once
+            if (edgeCount > 0) {
+                edges.stroke({ width: 1, color: CONFIG.COLORS.EDGE, alpha: 0.4 });
+            }
 
-            State.stats.drawCalls = blocks.children.length + 1; // blocks + 1 edge batch
+            // Second pass: draw blocks (on top of edges)
+            for (let i = 0; i < State.blockCount; i++) {
+                const screenX = (x[i] - vpX) * zoom + halfWidth;
+                const screenY = (y[i] - vpY) * zoom + halfHeight;
+
+                // Skip if outside viewport
+                if (screenX < -50 || screenX > width + 50 ||
+                    screenY < -50 || screenY > height + 50) {
+                    continue;
+                }
+
+                const blockSize = size[i] * zoom;
+                const halfSize = blockSize / 2;
+
+                // Choose graphics based on color (blue or red)
+                if (isBlue[i]) {
+                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                } else {
+                    redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                }
+
+                visibleCount++;
+            }
+
+            // Fill all blocks at once (2 draw calls: blue + red)
+            blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
+            redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
+
+            // Update stats
+            State.stats.drawCalls = 3; // edges + blue blocks + red blocks
+            State.stats.visibleBlocks = visibleCount;
+            State.stats.edgeCount = edgeCount;
         }
 
         // ------------------------------------------------------------
@@ -675,13 +703,15 @@
                 DOM.fpsDisplay.classList.add('warning');
             }
 
-            // Draw calls
-            DOM.drawCalls.textContent = `Draw calls: ${State.stats.drawCalls}`;
+            // Draw calls and visible blocks
+            DOM.drawCalls.textContent = `Draws: ${State.stats.drawCalls} | Visible: ${State.stats.visibleBlocks}`;
 
             // Memory (if available)
             if (performance.memory) {
                 const mb = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
-                DOM.memoryUsage.textContent = `Memory: ${mb} MB`;
+                DOM.memoryUsage.textContent = `Mem: ${mb}MB | Edges: ${State.stats.edgeCount}`;
+            } else {
+                DOM.memoryUsage.textContent = `Edges: ${State.stats.edgeCount}`;
             }
         }
 
