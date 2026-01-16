@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>DAGknight Protocol Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0A0E17;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: #E0E0E0;
+        }
+
+        #app {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* Status overlay */
+        #status {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.85);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 13px;
+            backdrop-filter: blur(8px);
+            min-width: 200px;
+        }
+
+        #status .title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #4A90D9;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #status .title::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            animation: pulse 2s infinite;
+        }
+
+        #status.connected .title::before {
+            background: #00FF88;
+        }
+
+        #status .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #status .row:last-child {
+            border-bottom: none;
+        }
+
+        #status .label {
+            color: #888;
+        }
+
+        #status .value {
+            color: #FFF;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* Stats overlay */
+        #stats {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.85);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            backdrop-filter: blur(8px);
+            font-family: 'Consolas', monospace;
+        }
+
+        #stats .fps {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00FF88;
+        }
+
+        #stats .fps.warning {
+            color: #F1C40F;
+        }
+
+        #stats .fps.critical {
+            color: #E74C3C;
+        }
+
+        /* Legend */
+        #legend {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.85);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            backdrop-filter: blur(8px);
+            display: flex;
+            gap: 16px;
+        }
+
+        #legend .item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #legend .color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .color-blue { background: #4A90D9; }
+        .color-red { background: #E74C3C; }
+        .color-vspc { background: #00FF88; box-shadow: 0 0 8px #00FF88; }
+        .color-cluster { background: #9B59B6; }
+
+        /* Controls */
+        #controls {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+        }
+
+        #controls button {
+            background: rgba(74, 144, 217, 0.2);
+            border: 1px solid rgba(74, 144, 217, 0.5);
+            color: #4A90D9;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        #controls button:hover {
+            background: rgba(74, 144, 217, 0.4);
+            border-color: #4A90D9;
+        }
+
+        #controls button:active {
+            transform: scale(0.98);
+        }
+
+        /* Loading overlay */
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0A0E17;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #loading .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(74, 144, 217, 0.2);
+            border-top-color: #4A90D9;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        #loading .text {
+            margin-top: 16px;
+            color: #4A90D9;
+            font-size: 14px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="canvas-container"></div>
+
+        <div id="status">
+            <div class="title">DAGknight Visualizer</div>
+            <div class="row">
+                <span class="label">Status</span>
+                <span class="value" id="connection-status">Disconnected</span>
+            </div>
+            <div class="row">
+                <span class="label">Network</span>
+                <span class="value" id="network-name">-</span>
+            </div>
+            <div class="row">
+                <span class="label">Blue Score</span>
+                <span class="value" id="blue-score">-</span>
+            </div>
+            <div class="row">
+                <span class="label">Blocks</span>
+                <span class="value" id="block-count">0</span>
+            </div>
+        </div>
+
+        <div id="stats">
+            <div class="fps" id="fps-display">-- FPS</div>
+            <div id="draw-calls">Draw calls: -</div>
+            <div id="memory-usage">Memory: -</div>
+        </div>
+
+        <div id="legend">
+            <div class="item"><div class="color color-blue"></div> Blue Block</div>
+            <div class="item"><div class="color color-red"></div> Red Block</div>
+            <div class="item"><div class="color color-vspc"></div> VSPC</div>
+            <div class="item"><div class="color color-cluster"></div> Honest Cluster</div>
+        </div>
+
+        <div id="controls">
+            <button id="btn-pause">Pause</button>
+            <button id="btn-reset">Reset</button>
+            <button id="btn-zoom-in">+</button>
+            <button id="btn-zoom-out">-</button>
+        </div>
+
+        <div id="loading">
+            <div class="spinner"></div>
+            <div class="text">Initializing...</div>
+        </div>
+    </div>
+
+    <!-- PixiJS v8 -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.x/dist/pixi.min.js"></script>
+
+    <!-- Kaspa WASM SDK -->
+    <script type="module">
+        // ============================================================
+        // DAGknight Protocol Visualizer
+        // Phase 1: Foundation
+        // ============================================================
+
+        // ------------------------------------------------------------
+        // Constants
+        // ------------------------------------------------------------
+        const CONFIG = {
+            // Display
+            MAX_BLOCKS: 2000,
+            VISIBLE_BLOCKS: 1000,
+            BLOCK_SIZE: 8,
+            BLOCK_SIZE_VIRTUAL: 12,
+
+            // Colors
+            COLORS: {
+                BACKGROUND: 0x0A0E17,
+                BLUE_BLOCK: 0x4A90D9,
+                RED_BLOCK: 0xE74C3C,
+                VSPC: 0x00FF88,
+                EDGE: 0x334455,
+                EDGE_SELECTED: 0xFFFFFF,
+                HONEST_CLUSTER: 0x9B59B6,
+            },
+
+            // Performance
+            UPDATE_INTERVAL: 500,  // ms
+            TARGET_FPS: 60,
+
+            // Network
+            RPC_ENDPOINTS: [
+                'wss://kaspa.aspectron.org/mainnet/wrpc/borsh',
+                'wss://kaspa.matryx.io/mainnet/wrpc/borsh',
+            ],
+        };
+
+        // ------------------------------------------------------------
+        // State
+        // ------------------------------------------------------------
+        const State = {
+            app: null,
+            containers: {
+                edges: null,
+                blocks: null,
+                vspc: null,
+            },
+            rpcClient: null,
+            isConnected: false,
+            isPaused: false,
+
+            // Block data (TypedArrays for performance)
+            blockData: {
+                hashes: new Array(CONFIG.MAX_BLOCKS),
+                x: new Float32Array(CONFIG.MAX_BLOCKS),
+                y: new Float32Array(CONFIG.MAX_BLOCKS),
+                color: new Uint32Array(CONFIG.MAX_BLOCKS),
+                size: new Float32Array(CONFIG.MAX_BLOCKS),
+                isBlue: new Uint8Array(CONFIG.MAX_BLOCKS),
+                daaScore: new Float64Array(CONFIG.MAX_BLOCKS),
+                parentCount: new Uint8Array(CONFIG.MAX_BLOCKS),
+                parentIndices: new Int16Array(CONFIG.MAX_BLOCKS * 6),
+            },
+            blockCount: 0,
+            blockHashToIndex: new Map(),
+
+            // Ring buffer pointers
+            ringHead: 0,
+            ringTail: 0,
+
+            // Viewport
+            viewport: {
+                x: 0,
+                y: 0,
+                zoom: 1,
+                width: 0,
+                height: 0,
+            },
+
+            // Stats
+            stats: {
+                fps: 0,
+                frameCount: 0,
+                lastFpsUpdate: 0,
+                drawCalls: 0,
+            },
+        };
+
+        // ------------------------------------------------------------
+        // DOM Elements
+        // ------------------------------------------------------------
+        const DOM = {
+            container: document.getElementById('canvas-container'),
+            loading: document.getElementById('loading'),
+            loadingText: document.querySelector('#loading .text'),
+            status: document.getElementById('status'),
+            connectionStatus: document.getElementById('connection-status'),
+            networkName: document.getElementById('network-name'),
+            blueScore: document.getElementById('blue-score'),
+            blockCount: document.getElementById('block-count'),
+            fpsDisplay: document.getElementById('fps-display'),
+            drawCalls: document.getElementById('draw-calls'),
+            memoryUsage: document.getElementById('memory-usage'),
+            btnPause: document.getElementById('btn-pause'),
+            btnReset: document.getElementById('btn-reset'),
+            btnZoomIn: document.getElementById('btn-zoom-in'),
+            btnZoomOut: document.getElementById('btn-zoom-out'),
+        };
+
+        // ------------------------------------------------------------
+        // PixiJS Initialization
+        // ------------------------------------------------------------
+        async function initPixi() {
+            updateLoadingText('Initializing renderer...');
+
+            State.app = new PIXI.Application();
+
+            await State.app.init({
+                background: CONFIG.COLORS.BACKGROUND,
+                resizeTo: DOM.container,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+                powerPreference: 'high-performance',
+            });
+
+            DOM.container.appendChild(State.app.canvas);
+
+            // Create containers (layered)
+            State.containers.edges = new PIXI.Container();
+            State.containers.blocks = new PIXI.Container();
+            State.containers.vspc = new PIXI.Container();
+
+            State.app.stage.addChild(State.containers.edges);
+            State.app.stage.addChild(State.containers.blocks);
+            State.app.stage.addChild(State.containers.vspc);
+
+            // Store viewport dimensions
+            State.viewport.width = State.app.screen.width;
+            State.viewport.height = State.app.screen.height;
+
+            // Handle resize
+            window.addEventListener('resize', onResize);
+
+            // Start render loop
+            State.app.ticker.add(onTick);
+
+            console.log('PixiJS initialized', {
+                width: State.viewport.width,
+                height: State.viewport.height,
+                renderer: State.app.renderer.type === 1 ? 'WebGL' : 'WebGPU',
+            });
+        }
+
+        function onResize() {
+            State.viewport.width = State.app.screen.width;
+            State.viewport.height = State.app.screen.height;
+        }
+
+        // ------------------------------------------------------------
+        // Render Loop
+        // ------------------------------------------------------------
+        function onTick(ticker) {
+            if (State.isPaused) return;
+
+            // Update FPS counter
+            State.stats.frameCount++;
+            const now = performance.now();
+            if (now - State.stats.lastFpsUpdate >= 1000) {
+                State.stats.fps = State.stats.frameCount;
+                State.stats.frameCount = 0;
+                State.stats.lastFpsUpdate = now;
+                updateStatsDisplay();
+            }
+
+            // Render blocks and edges
+            renderDAG();
+        }
+
+        // ------------------------------------------------------------
+        // DAG Rendering
+        // ------------------------------------------------------------
+        function renderDAG() {
+            const { blocks, edges, vspc } = State.containers;
+
+            // Clear previous frame
+            blocks.removeChildren();
+            edges.removeChildren();
+            vspc.removeChildren();
+
+            if (State.blockCount === 0) return;
+
+            // Create graphics for edges (batched)
+            const edgeGraphics = new PIXI.Graphics();
+
+            // Render blocks and collect edge data
+            const blockSprites = [];
+
+            for (let i = 0; i < State.blockCount; i++) {
+                const x = State.blockData.x[i];
+                const y = State.blockData.y[i];
+                const color = State.blockData.color[i];
+                const size = State.blockData.size[i];
+
+                // Skip if outside viewport (with margin)
+                const screenX = (x - State.viewport.x) * State.viewport.zoom + State.viewport.width / 2;
+                const screenY = (y - State.viewport.y) * State.viewport.zoom + State.viewport.height / 2;
+
+                if (screenX < -50 || screenX > State.viewport.width + 50 ||
+                    screenY < -50 || screenY > State.viewport.height + 50) {
+                    continue;
+                }
+
+                // Draw block
+                const block = new PIXI.Graphics();
+                block.rect(-size/2, -size/2, size, size);
+                block.fill(color);
+                block.position.set(screenX, screenY);
+                blocks.addChild(block);
+
+                // Draw edges to parents
+                const parentCount = State.blockData.parentCount[i];
+                for (let p = 0; p < parentCount; p++) {
+                    const parentIdx = State.blockData.parentIndices[i * 6 + p];
+                    if (parentIdx >= 0 && parentIdx < State.blockCount) {
+                        const px = State.blockData.x[parentIdx];
+                        const py = State.blockData.y[parentIdx];
+                        const parentScreenX = (px - State.viewport.x) * State.viewport.zoom + State.viewport.width / 2;
+                        const parentScreenY = (py - State.viewport.y) * State.viewport.zoom + State.viewport.height / 2;
+
+                        edgeGraphics.moveTo(screenX, screenY);
+                        edgeGraphics.lineTo(parentScreenX, parentScreenY);
+                    }
+                }
+            }
+
+            // Stroke all edges at once (batched)
+            edgeGraphics.stroke({ width: 1, color: CONFIG.COLORS.EDGE, alpha: 0.5 });
+            edges.addChild(edgeGraphics);
+
+            State.stats.drawCalls = blocks.children.length + 1; // blocks + 1 edge batch
+        }
+
+        // ------------------------------------------------------------
+        // Block Management
+        // ------------------------------------------------------------
+        function addBlock(blockInfo) {
+            const index = State.ringHead;
+
+            // Store hash
+            State.blockData.hashes[index] = blockInfo.hash;
+            State.blockHashToIndex.set(blockInfo.hash, index);
+
+            // Calculate position
+            const daaScore = Number(blockInfo.header.daaScore);
+            State.blockData.daaScore[index] = daaScore;
+            State.blockData.x[index] = daaScore * 2; // X based on DAA score
+            State.blockData.y[index] = (Math.random() - 0.5) * 400; // Random Y for now
+
+            // Color (default blue, will be updated by DAGknight calculation)
+            State.blockData.color[index] = CONFIG.COLORS.BLUE_BLOCK;
+            State.blockData.isBlue[index] = 1;
+            State.blockData.size[index] = CONFIG.BLOCK_SIZE;
+
+            // Parents
+            const parents = blockInfo.header.parents?.[0]?.parentHashes || [];
+            State.blockData.parentCount[index] = Math.min(parents.length, 6);
+            for (let p = 0; p < 6; p++) {
+                if (p < parents.length) {
+                    const parentIndex = State.blockHashToIndex.get(parents[p]);
+                    State.blockData.parentIndices[index * 6 + p] = parentIndex ?? -1;
+                } else {
+                    State.blockData.parentIndices[index * 6 + p] = -1;
+                }
+            }
+
+            // Update ring buffer
+            State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
+            if (State.blockCount < CONFIG.MAX_BLOCKS) {
+                State.blockCount++;
+            } else {
+                // Remove oldest block from hash map
+                const oldestHash = State.blockData.hashes[State.ringTail];
+                State.blockHashToIndex.delete(oldestHash);
+                State.ringTail = (State.ringTail + 1) % CONFIG.MAX_BLOCKS;
+            }
+
+            // Update viewport to follow latest blocks
+            const latestX = State.blockData.x[index];
+            State.viewport.x = latestX - State.viewport.width / 3;
+
+            // Update UI
+            DOM.blockCount.textContent = State.blockCount.toLocaleString();
+        }
+
+        // ------------------------------------------------------------
+        // Kaspa SDK Integration
+        // ------------------------------------------------------------
+        async function initKaspaSDK() {
+            updateLoadingText('Loading Kaspa SDK...');
+
+            try {
+                // Dynamic import of Kaspa WASM SDK
+                const kaspa = await import('https://cdn.jsdelivr.net/npm/kaspa-wasm@0.15.1/web/kaspa/kaspa.js');
+                await kaspa.default();
+
+                updateLoadingText('Connecting to network...');
+
+                // Create RPC client
+                const { RpcClient, Resolver, NetworkId } = kaspa;
+
+                const resolver = new Resolver();
+                State.rpcClient = new RpcClient({
+                    resolver,
+                    networkId: NetworkId.Mainnet,
+                });
+
+                // Connect
+                await State.rpcClient.connect();
+
+                // Get initial info
+                const info = await State.rpcClient.getBlockDagInfo();
+                console.log('Connected to Kaspa network:', info);
+
+                // Update UI
+                State.isConnected = true;
+                DOM.status.classList.add('connected');
+                DOM.connectionStatus.textContent = 'Connected';
+                DOM.networkName.textContent = 'Mainnet';
+                DOM.blueScore.textContent = Number(info.virtualDaaScore).toLocaleString();
+
+                // Subscribe to new blocks
+                await subscribeToBlocks(kaspa);
+
+                return kaspa;
+            } catch (error) {
+                console.error('Failed to initialize Kaspa SDK:', error);
+                DOM.connectionStatus.textContent = 'Error: ' + error.message;
+                throw error;
+            }
+        }
+
+        async function subscribeToBlocks(kaspa) {
+            updateLoadingText('Subscribing to blocks...');
+
+            // Subscribe to block added notifications
+            State.rpcClient.addEventListener('block-added', async (event) => {
+                if (State.isPaused) return;
+
+                const blockHash = event.data.block.header.hash;
+
+                try {
+                    // Get full block info
+                    const blockInfo = await State.rpcClient.getBlock({
+                        hash: blockHash,
+                        includeTransactions: false,
+                    });
+
+                    addBlock(blockInfo.block);
+                } catch (error) {
+                    console.warn('Failed to get block:', blockHash, error);
+                }
+            });
+
+            // Start subscription
+            await State.rpcClient.subscribeBlockAdded();
+
+            console.log('Subscribed to block notifications');
+        }
+
+        // ------------------------------------------------------------
+        // UI Updates
+        // ------------------------------------------------------------
+        function updateLoadingText(text) {
+            DOM.loadingText.textContent = text;
+        }
+
+        function hideLoading() {
+            DOM.loading.classList.add('hidden');
+        }
+
+        function updateStatsDisplay() {
+            // FPS
+            DOM.fpsDisplay.textContent = `${State.stats.fps} FPS`;
+            DOM.fpsDisplay.className = 'fps';
+            if (State.stats.fps < 30) {
+                DOM.fpsDisplay.classList.add('critical');
+            } else if (State.stats.fps < 50) {
+                DOM.fpsDisplay.classList.add('warning');
+            }
+
+            // Draw calls
+            DOM.drawCalls.textContent = `Draw calls: ${State.stats.drawCalls}`;
+
+            // Memory (if available)
+            if (performance.memory) {
+                const mb = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                DOM.memoryUsage.textContent = `Memory: ${mb} MB`;
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Controls
+        // ------------------------------------------------------------
+        function setupControls() {
+            DOM.btnPause.addEventListener('click', () => {
+                State.isPaused = !State.isPaused;
+                DOM.btnPause.textContent = State.isPaused ? 'Resume' : 'Pause';
+            });
+
+            DOM.btnReset.addEventListener('click', () => {
+                // Clear all blocks
+                State.blockCount = 0;
+                State.ringHead = 0;
+                State.ringTail = 0;
+                State.blockHashToIndex.clear();
+                State.viewport.x = 0;
+                State.viewport.y = 0;
+                DOM.blockCount.textContent = '0';
+            });
+
+            DOM.btnZoomIn.addEventListener('click', () => {
+                State.viewport.zoom = Math.min(State.viewport.zoom * 1.2, 3);
+            });
+
+            DOM.btnZoomOut.addEventListener('click', () => {
+                State.viewport.zoom = Math.max(State.viewport.zoom / 1.2, 0.2);
+            });
+
+            // Pan with mouse drag
+            let isDragging = false;
+            let lastMouse = { x: 0, y: 0 };
+
+            State.app.canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                lastMouse = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = (e.clientX - lastMouse.x) / State.viewport.zoom;
+                const dy = (e.clientY - lastMouse.y) / State.viewport.zoom;
+                State.viewport.x -= dx;
+                State.viewport.y -= dy;
+                lastMouse = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            // Zoom with mouse wheel
+            State.app.canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                State.viewport.zoom = Math.max(0.2, Math.min(3, State.viewport.zoom * zoomFactor));
+            });
+        }
+
+        // ------------------------------------------------------------
+        // Main
+        // ------------------------------------------------------------
+        async function main() {
+            try {
+                await initPixi();
+                setupControls();
+                await initKaspaSDK();
+                hideLoading();
+                console.log('DAGknight Visualizer initialized successfully');
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                updateLoadingText('Error: ' + error.message);
+            }
+        }
+
+        // Start
+        main();
+    </script>
+</body>
+</html>
