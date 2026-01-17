@@ -296,6 +296,9 @@
         // Constants
         // ------------------------------------------------------------
         const CONFIG = {
+            // Version (for debugging screenshots)
+            VERSION: 'v3df83a2',
+
             // Display
             MAX_BLOCKS: 1000,
             MAX_EDGES: 500,
@@ -1325,13 +1328,15 @@
                 DOM.memoryUsage.textContent = `Edges: ${State.stats.edgeCount}`;
             }
 
-            // Debug info
-            if (State.debug && DOM.debugInfo) {
-                let debugText = '';
-                if (State.debug.error) {
-                    debugText = `ERR: ${State.debug.error}`;
+            // Debug info (with version for screenshot identification)
+            if (DOM.debugInfo) {
+                let debugText = `${CONFIG.VERSION} | `;
+                if (State.debug?.error) {
+                    debugText += `ERR: ${State.debug.error}`;
+                } else if (State.debug) {
+                    debugText += `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Lin:${State.debug.linearLen} T:${State.debug.calcTime}ms`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Lin:${State.debug.linearLen} T:${State.debug.calcTime}ms`;
+                    debugText += 'Calculating...';
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
