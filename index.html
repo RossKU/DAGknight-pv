@@ -381,7 +381,8 @@
 
             // Selected Chain (Selected Parent Chain)
             selectedChainEdges: [],    // [[fromHash, toHash], ...]
-            selectedChainBlocks: new Set(),  // All blocks on chain
+            selectedChainBlocks: new Set(),  // Blocks on selected chain
+            orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -852,10 +853,12 @@
 
         // Step 2.8: Build Selected Chains from each Tip
         // Returns array of edges: [[from, to], [from, to], ...]
+        // Also collects all ancestors (for topological ordering / Y=0 convergence)
         function buildSelectedChains(tipHashes, maxDepth = 50) {
-            const edges = [];           // [fromHash, toHash] pairs
+            const edges = [];           // [fromHash, toHash] pairs for selected chain
             const visited = new Set();  // Avoid duplicate edges after merge
-            const chainBlocks = new Set(); // All blocks on selected chains
+            const chainBlocks = new Set(); // Blocks on selected chain
+            const orderedBlocks = new Set(); // All blocks that should be Y=0 (chain + ancestors)
 
             for (const tip of tipHashes) {
                 let currentHash = tip;
@@ -866,11 +869,19 @@
                     if (idx === undefined) break;
 
                     chainBlocks.add(currentHash);
+                    orderedBlocks.add(currentHash);
 
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
 
-                    // Select parent for this block
+                    // Add ALL parents to orderedBlocks (they are topologically ordered)
+                    for (const p of parents) {
+                        orderedBlocks.add(p);
+                        // Recursively add ancestors of non-selected parents too
+                        collectAncestors(p, orderedBlocks, 30);
+                    }
+
+                    // Select parent for this block (for chain edge)
                     const selectedParent = selectParent(parents);
                     if (!selectedParent) break;
 
@@ -886,7 +897,22 @@
                 }
             }
 
-            return { edges, chainBlocks };
+            return { edges, chainBlocks, orderedBlocks };
+        }
+
+        // Helper: Collect all ancestors up to maxDepth
+        function collectAncestors(hash, resultSet, maxDepth) {
+            if (maxDepth <= 0 || resultSet.has(hash)) return;
+
+            const idx = State.blockHashToIndex.get(hash);
+            if (idx === undefined) return;
+
+            resultSet.add(hash);
+
+            const parents = State.blockData.parentHashes[idx] || [];
+            for (const p of parents) {
+                collectAncestors(p, resultSet, maxDepth - 1);
+            }
         }
 
         // Step 2.9: Run DAGknight calculation and update block positions
@@ -915,23 +941,26 @@
 
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
-                const { edges, chainBlocks } = buildSelectedChains(tips.slice(0, 10));  // Limit tips
+                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
                 const calcTime = performance.now() - startTime;
 
                 State.selectedChainEdges = edges;
                 State.selectedChainBlocks = chainBlocks;
+                State.orderedBlocks = orderedBlocks;
                 State.debug = {
                     tips: tips.length,
                     chainLen: chainBlocks.size,
+                    orderedLen: orderedBlocks.size,
                     edgeCount: edges.length,
                     calcTime: calcTime.toFixed(1),
                 };
 
-                // Mark chain blocks: set targetY = 0 (they will animate to center)
+                // Mark ordered blocks: set targetY = 0 (they will animate to center)
+                // This includes chain blocks AND their ancestors (topologically ordered)
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
-                    if (chainBlocks.has(hash)) {
-                        State.blockData.targetY[i] = 0;  // Chain blocks go to Y=0
+                    if (orderedBlocks.has(hash)) {
+                        State.blockData.targetY[i] = 0;  // Ordered blocks go to Y=0
                         State.blockData.isBlue[i] = 1;
                     }
                 }
@@ -1122,7 +1151,7 @@
                 if (State.debug.error) {
                     debugText = `ERR: ${State.debug.error}`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} E:${State.debug.edgeCount} T:${State.debug.calcTime}ms`;
+                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Ord:${State.debug.orderedLen} T:${State.debug.calcTime}ms`;
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
