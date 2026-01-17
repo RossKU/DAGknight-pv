@@ -1100,30 +1100,31 @@
                 };
 
                 // Assign linearIndex and targetX to linearized blocks
-                // Right-aligned: newest linearized block at right edge
-                const maxLinearIdx = linearOrder.length - 1;
-                const rightEdgeX = (State.maxDaaScore - State.minDaaScore) * 50;  // Latest DAA position
+                // Simple approach: all LINEAR_PITCH based
+                const maxLinearX = (linearOrder.length - 1) * CONFIG.LINEAR_PITCH;
 
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     const linearIdx = linearOrder.indexOf(hash);
 
                     if (linearIdx !== -1) {
-                        // Block is linearized - right aligned
-                        // linearIdx=0 (oldest) → left, linearIdx=max (newest) → right
+                        // Block is linearized
+                        // linearIdx=0 (oldest) → X=0, linearIdx=max (newest) → X=maxLinearX
                         State.blockData.linearIndex[i] = linearIdx;
-                        State.blockData.targetX[i] = rightEdgeX - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                        State.blockData.targetX[i] = linearIdx * CONFIG.LINEAR_PITCH;
                         State.blockData.targetY[i] = 0;
                         State.blockData.isBlue[i] = 1;
                     } else {
-                        // Block not yet linearized (keep at DAA position)
+                        // Block not yet linearized - place to the right of linearized blocks
                         State.blockData.linearIndex[i] = -1;
+                        State.blockData.targetX[i] = maxLinearX + 50;  // Fixed offset from right edge
+                        // targetY stays at random position
                     }
                 }
 
-                // Update viewport to follow the right edge (newest blocks)
+                // Update viewport to follow the linearized chain (newest at right 70%)
                 if (linearOrder.length > 0) {
-                    State.viewport.targetX = rightEdgeX - State.viewport.width * 0.7;
+                    State.viewport.targetX = maxLinearX - State.viewport.width * 0.7;
                 }
             } catch (error) {
                 State.debug = { error: error.message };
