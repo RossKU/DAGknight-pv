@@ -268,6 +268,7 @@
         </div>
 
         <div id="controls">
+            <button id="btn-disconnect">Disconnect</button>
             <button id="btn-pause">Pause</button>
             <button id="btn-reset">Reset</button>
             <button id="btn-zoom-in">+</button>
@@ -295,8 +296,8 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Display
-            MAX_BLOCKS: 2000,
-            VISIBLE_BLOCKS: 1000,
+            MAX_BLOCKS: 1000,
+            MAX_EDGES: 500,
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
 
@@ -390,6 +391,7 @@
             fpsDisplay: document.getElementById('fps-display'),
             drawCalls: document.getElementById('draw-calls'),
             memoryUsage: document.getElementById('memory-usage'),
+            btnDisconnect: document.getElementById('btn-disconnect'),
             btnPause: document.getElementById('btn-pause'),
             btnReset: document.getElementById('btn-reset'),
             btnZoomIn: document.getElementById('btn-zoom-in'),
@@ -498,8 +500,17 @@
             let visibleCount = 0;
             let edgeCount = 0;
 
-            // First pass: draw edges (behind blocks)
+            // Build sorted index array (by X descending = newest first)
+            const sortedIndices = [];
             for (let i = 0; i < State.blockCount; i++) {
+                sortedIndices.push(i);
+            }
+            sortedIndices.sort((a, b) => x[b] - x[a]);
+
+            // First pass: draw edges (newest blocks first, up to MAX_EDGES)
+            for (const i of sortedIndices) {
+                if (edgeCount >= CONFIG.MAX_EDGES) break;
+
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
@@ -512,6 +523,7 @@
                 // Draw edges to parents (dynamically resolved)
                 const parents = parentHashes[i] || [];
                 for (const parentHash of parents) {
+                    if (edgeCount >= CONFIG.MAX_EDGES) break;
                     const parentIdx = State.blockHashToIndex.get(parentHash);
                     if (parentIdx !== undefined) {
                         const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
@@ -734,6 +746,32 @@
         // Controls
         // ------------------------------------------------------------
         function setupControls() {
+            DOM.btnDisconnect.addEventListener('click', async () => {
+                if (State.isConnected && State.rpcClient) {
+                    try {
+                        await State.rpcClient.disconnect();
+                        State.isConnected = false;
+                        DOM.connectionStatus.textContent = 'Disconnected';
+                        DOM.connectionStatus.className = 'disconnected';
+                        DOM.btnDisconnect.textContent = 'Connect';
+                    } catch (e) {
+                        console.error('Disconnect error:', e);
+                    }
+                } else {
+                    // Reconnect
+                    try {
+                        await State.rpcClient.connect();
+                        await State.rpcClient.subscribeBlockAdded();
+                        State.isConnected = true;
+                        DOM.connectionStatus.textContent = 'Connected';
+                        DOM.connectionStatus.className = 'connected';
+                        DOM.btnDisconnect.textContent = 'Disconnect';
+                    } catch (e) {
+                        console.error('Connect error:', e);
+                    }
+                }
+            });
+
             DOM.btnPause.addEventListener('click', () => {
                 State.isPaused = !State.isPaused;
                 DOM.btnPause.textContent = State.isPaused ? 'Resume' : 'Pause';
