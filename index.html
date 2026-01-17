@@ -783,11 +783,21 @@
             if (idxA === undefined || idxB === undefined) return 0;
 
             // Compare blueWork (higher is better)
-            const blueWorkA = BigInt(State.blockData.blueWork[idxA] || '0');
-            const blueWorkB = BigInt(State.blockData.blueWork[idxB] || '0');
+            // blueWork is hex string, convert with 0x prefix
+            const workStrA = State.blockData.blueWork[idxA] || '0';
+            const workStrB = State.blockData.blueWork[idxB] || '0';
 
-            if (blueWorkA > blueWorkB) return -1;  // A wins
-            if (blueWorkA < blueWorkB) return 1;   // B wins
+            try {
+                const blueWorkA = BigInt('0x' + workStrA.replace(/^0x/, ''));
+                const blueWorkB = BigInt('0x' + workStrB.replace(/^0x/, ''));
+
+                if (blueWorkA > blueWorkB) return -1;  // A wins
+                if (blueWorkA < blueWorkB) return 1;   // B wins
+            } catch (e) {
+                // Fallback: compare as strings
+                if (workStrA > workStrB) return -1;
+                if (workStrA < workStrB) return 1;
+            }
 
             // Tiebreaker: hash (lexicographic, lower wins)
             if (hashA < hashB) return -1;
@@ -811,13 +821,16 @@
         }
 
         // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
-        function selectParent(parentHashes) {
+        function selectParent(parentHashes, depth = 0) {
+            // Prevent infinite recursion
+            if (depth > 10) return selectBestFromGroup(parentHashes);
+
             if (parentHashes.length === 0) return null;
             if (parentHashes.length === 1) return parentHashes[0];
 
             // Find LCCA
             const lcca = findLCCA(parentHashes);
-            if (!lcca) return parentHashes[0];
+            if (!lcca) return selectBestFromGroup(parentHashes);
 
             // Group by conflict zone
             const groups = groupByConflictZone(parentHashes, lcca);
@@ -834,8 +847,8 @@
                 if (winner) groupWinners.push(winner);
             }
 
-            // Recursively select among group winners
-            return selectParent(groupWinners);
+            // Recursively select among group winners (with depth limit)
+            return selectParent(groupWinners, depth + 1);
         }
 
         // Step 2.8: Build VSPC (Virtual Selected Parent Chain)
