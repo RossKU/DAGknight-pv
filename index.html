@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v9-multipath',
+            VERSION: 'v10-optimized',
 
             // Display
             MAX_BLOCKS: 1000,
@@ -306,6 +306,7 @@
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
             SPAWN_X: 400,  // Screen-relative: blocks spawn at right side (relative to center 0)
+            CLEANUP_THRESHOLD: -1600,  // Remove blocks with X below this (≈ 2x screen width left of SPAWN_X)
 
             // Colors
             COLORS: {
@@ -613,6 +614,7 @@
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
             // Draw Selected Chain edges (from each Tip, merging at LCCA)
+            // Skip edges where both endpoints have converged to Y≈0
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 let chainDrawn = false;
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -620,6 +622,11 @@
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
+                        // Skip if both endpoints have converged to Y=0
+                        if (Math.abs(y[idx1]) <= 5 && Math.abs(y[idx2]) <= 5) {
+                            continue;
+                        }
+
                         const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                         const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                         const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
@@ -936,40 +943,89 @@
         // Linearization Algorithm (DAGknight/GHOSTDAG compliant)
         // ============================================================
 
-        // Compute Past(block) - all ancestors of a block
-        function computePast(hash, maxDepth = 100) {
-            const past = new Set();
-            const queue = [hash];
+        // Check if 'ancestor' is an ancestor of 'block' (with depth limit)
+        function isAncestorOf(ancestor, block, maxDepth = 30) {
+            if (!block || !ancestor) return false;
+            if (ancestor === block) return true;
+
+            const visited = new Set();
+            const queue = [block];
             let depth = 0;
 
             while (queue.length > 0 && depth < maxDepth) {
-                const current = queue.shift();
-                const idx = State.blockHashToIndex.get(current);
-                if (idx === undefined) continue;
+                const levelSize = queue.length;
+                for (let i = 0; i < levelSize; i++) {
+                    const current = queue.shift();
+                    if (current === ancestor) return true;
 
-                const parents = State.blockData.parentHashes[idx] || [];
-                for (const p of parents) {
-                    if (!past.has(p)) {
-                        past.add(p);
-                        queue.push(p);
+                    const idx = State.blockHashToIndex.get(current);
+                    if (idx === undefined) continue;
+
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    for (const p of parents) {
+                        if (!visited.has(p)) {
+                            visited.add(p);
+                            queue.push(p);
+                        }
                     }
                 }
                 depth++;
             }
 
-            return past;
+            return false;
         }
 
-        // Compute Mergeset: Past(block) - Past(prevChainBlock)
-        function computeMergeset(chainBlock, prevChainBlock) {
-            const currentPast = computePast(chainBlock, 50);
-            const prevPast = prevChainBlock ? computePast(prevChainBlock, 50) : new Set();
-
-            // Mergeset = currentPast - prevPast (excluding chainBlock itself)
+        // Compute Mergeset (dkoder-style): BFS from chainBlock, stop at selectedParent's ancestors
+        // This only processes blocks in the "river" between chainBlock and selectedParent
+        function computeMergeset(chainBlock, selectedParent) {
             const mergeset = [];
-            for (const hash of currentPast) {
-                if (!prevPast.has(hash) && hash !== chainBlock) {
-                    mergeset.push(hash);
+            if (!chainBlock) return mergeset;
+
+            const idx = State.blockHashToIndex.get(chainBlock);
+            if (idx === undefined) return mergeset;
+
+            const parents = State.blockData.parentHashes[idx] || [];
+            if (parents.length === 0) return mergeset;
+
+            // BFS from chainBlock's parents (excluding selectedParent)
+            const visited = new Set();
+            const pastOfSelected = new Set();  // Blocks known to be in Past(selectedParent)
+            const queue = [];
+
+            for (const p of parents) {
+                if (p !== selectedParent) {
+                    queue.push(p);
+                    visited.add(p);
+                    mergeset.push(p);
+                }
+            }
+
+            // BFS with stopping condition (like dkoder)
+            let iterations = 0;
+            const maxIterations = 200;  // Safety limit
+
+            while (queue.length > 0 && iterations < maxIterations) {
+                const current = queue.shift();
+                iterations++;
+
+                const currentIdx = State.blockHashToIndex.get(current);
+                if (currentIdx === undefined) continue;
+
+                const currentParents = State.blockData.parentHashes[currentIdx] || [];
+                for (const parent of currentParents) {
+                    if (visited.has(parent) || pastOfSelected.has(parent)) {
+                        continue;
+                    }
+
+                    // Check if this parent is an ancestor of selectedParent (stop condition)
+                    if (selectedParent && isAncestorOf(parent, selectedParent, 20)) {
+                        pastOfSelected.add(parent);
+                        continue;  // Don't add to mergeset, stop exploring this path
+                    }
+
+                    visited.add(parent);
+                    mergeset.push(parent);
+                    queue.push(parent);
                 }
             }
 
@@ -1147,6 +1203,26 @@
 
                 // Viewport stays fixed at center (0, 0)
                 // No scrolling needed with screen-relative coordinates
+
+                // Cleanup: Remove blocks that have scrolled too far left
+                let removedCount = 0;
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    if (!hash) continue;
+
+                    // Check if block is too far left (past cleanup threshold)
+                    if (State.blockData.x[i] < CONFIG.CLEANUP_THRESHOLD) {
+                        // Remove from hash map
+                        State.blockHashToIndex.delete(hash);
+                        // Clear the slot
+                        State.blockData.hashes[i] = null;
+                        removedCount++;
+                    }
+                }
+
+                if (removedCount > 0) {
+                    State.debug.removed = removedCount;
+                }
             } catch (error) {
                 State.debug = { error: error.message };
                 console.error('DAGknight calculation error:', error);
