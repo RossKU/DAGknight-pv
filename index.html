@@ -1068,20 +1068,26 @@
                 const startTime = performance.now();
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
 
-                // Build Selected Chain list (for linearization)
-                // Extract chain from edges (newest to oldest)
+                // Build Single Selected Chain for linearization (dkoder compliant)
+                // Start from best tip (highest blue_work), follow selected parents
+                const bestTip = selectParent(tips);
                 const chainList = [];
-                const chainSet = new Set();
-                for (const [from, to] of edges) {
-                    if (!chainSet.has(from)) {
-                        chainSet.add(from);
-                        chainList.push(from);
-                    }
-                    if (!chainSet.has(to)) {
-                        chainSet.add(to);
-                        chainList.push(to);
-                    }
+                let currentChainBlock = bestTip;
+                const maxChainDepth = 100;
+
+                while (currentChainBlock && chainList.length < maxChainDepth) {
+                    chainList.push(currentChainBlock);
+
+                    const idx = State.blockHashToIndex.get(currentChainBlock);
+                    if (idx === undefined) break;
+
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
+
+                    // Select next chain block (highest blue_work parent)
+                    currentChainBlock = selectParent(parents);
                 }
+                // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
                 // Build linear order (DAGknight compliant)
                 const linearOrder = buildLinearOrder(chainList);
@@ -1094,7 +1100,7 @@
 
                 State.debug = {
                     tips: tips.length,
-                    chainLen: chainBlocks.size,
+                    chainLen: chainList.length,
                     linearLen: linearOrder.length,
                     calcTime: calcTime.toFixed(1),
                 };
