@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v7-perf',
+            VERSION: 'v8-edge',
 
             // Display
             MAX_BLOCKS: 1000,
@@ -560,10 +560,9 @@
                     continue;
                 }
 
-                // Draw edges to parents (skip if block is linearized/converged to Y=0)
-                // This significantly reduces edge count and improves performance
-                const { linearIndex } = State.blockData;
-                if (linearIndex[i] < 0) {  // Only draw edges from non-linearized blocks (tips)
+                // Draw edges to parents (skip if block has converged to Y≈0)
+                // Edges fade out naturally as blocks reach Y=0, not when linearized
+                if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
                     for (const parentHash of parents) {
                         if (edgeCount >= CONFIG.MAX_EDGES) break;
