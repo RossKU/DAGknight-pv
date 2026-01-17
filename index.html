@@ -274,6 +274,8 @@
             <button id="btn-zoom-out">-</button>
         </div>
 
+        <div id="debug" style="position:absolute; bottom:60px; left:16px; right:16px; max-height:200px; overflow-y:auto; background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace; font-size:11px; padding:8px; border-radius:4px; z-index:200; white-space:pre-wrap;"></div>
+
         <div id="loading">
             <div class="spinner"></div>
             <div class="text">Initializing...</div>
@@ -335,14 +337,13 @@
             // Block data (TypedArrays for performance)
             blockData: {
                 hashes: new Array(CONFIG.MAX_BLOCKS),
+                parentHashes: new Array(CONFIG.MAX_BLOCKS),  // Store parent hashes for dynamic resolution
                 x: new Float32Array(CONFIG.MAX_BLOCKS),
                 y: new Float32Array(CONFIG.MAX_BLOCKS),
                 color: new Uint32Array(CONFIG.MAX_BLOCKS),
                 size: new Float32Array(CONFIG.MAX_BLOCKS),
                 isBlue: new Uint8Array(CONFIG.MAX_BLOCKS),
                 daaScore: new Float64Array(CONFIG.MAX_BLOCKS),
-                parentCount: new Uint8Array(CONFIG.MAX_BLOCKS),
-                parentIndices: new Int16Array(CONFIG.MAX_BLOCKS * 6),
             },
             blockCount: 0,
             blockHashToIndex: new Map(),
@@ -481,7 +482,7 @@
 
             if (State.blockCount === 0) return;
 
-            const { x, y, color, size, isBlue, parentCount, parentIndices } = State.blockData;
+            const { x, y, size, isBlue, parentHashes } = State.blockData;
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
@@ -502,11 +503,11 @@
                     continue;
                 }
 
-                // Draw edges to parents
-                const pCount = parentCount[i];
-                for (let p = 0; p < pCount; p++) {
-                    const parentIdx = parentIndices[i * 6 + p];
-                    if (parentIdx >= 0) {
+                // Draw edges to parents (dynamically resolved)
+                const parents = parentHashes[i] || [];
+                for (const parentHash of parents) {
+                    const parentIdx = State.blockHashToIndex.get(parentHash);
+                    if (parentIdx !== undefined) {
                         const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
                         const parentScreenY = (y[parentIdx] - vpY) * zoom + halfHeight;
 
@@ -559,12 +560,37 @@
         // ------------------------------------------------------------
         // Block Management
         // ------------------------------------------------------------
+        // Debug log function
+        const debugEl = document.getElementById('debug');
+        let debugCount = 0;
+        function debugLog(msg) {
+            debugCount++;
+            if (debugCount > 50) {
+                debugEl.textContent = ''; // Clear old logs
+                debugCount = 1;
+            }
+            debugEl.textContent += msg + '\n';
+            debugEl.scrollTop = debugEl.scrollHeight;
+        }
+
         function addBlock(blockInfo) {
             const index = State.ringHead;
 
-            // Store hash
-            State.blockData.hashes[index] = blockInfo.hash;
-            State.blockHashToIndex.set(blockInfo.hash, index);
+            // DEBUG: Log block structure (first 5 blocks only)
+            if (State.blockCount < 5) {
+                debugLog(`--- Block ${State.blockCount} ---`);
+                debugLog(`blockInfo keys: ${Object.keys(blockInfo).join(', ')}`);
+                debugLog(`header keys: ${Object.keys(blockInfo.header || {}).join(', ')}`);
+                debugLog(`hash: ${blockInfo.header?.hash}`);
+                debugLog(`parents type: ${typeof blockInfo.header?.parents}`);
+                debugLog(`parents isArray: ${Array.isArray(blockInfo.header?.parents)}`);
+                debugLog(`parents: ${JSON.stringify(blockInfo.header?.parents)?.slice(0, 200)}`);
+            }
+
+            // Store hash (WASM SDK uses header.hash, not block.hash)
+            const hash = blockInfo.header.hash;
+            State.blockData.hashes[index] = hash;
+            State.blockHashToIndex.set(hash, index);
 
             // Calculate position
             const daaScore = Number(blockInfo.header.daaScore);
@@ -577,16 +603,14 @@
             State.blockData.isBlue[index] = 1;
             State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
-            // Parents
-            const parents = blockInfo.header.parents?.[0]?.parentHashes || [];
-            State.blockData.parentCount[index] = Math.min(parents.length, 6);
-            for (let p = 0; p < 6; p++) {
-                if (p < parents.length) {
-                    const parentIndex = State.blockHashToIndex.get(parents[p]);
-                    State.blockData.parentIndices[index * 6 + p] = parentIndex ?? -1;
-                } else {
-                    State.blockData.parentIndices[index * 6 + p] = -1;
-                }
+            // Store parent hashes (resolved dynamically in renderDAG)
+            const parents = blockInfo.header.parents?.flatMap(p => p.parentHashes) || [];
+            State.blockData.parentHashes[index] = parents;
+
+            // DEBUG: Log parent extraction result
+            if (State.blockCount < 5) {
+                debugLog(`extracted parents: ${JSON.stringify(parents)?.slice(0, 200)}`);
+                debugLog(`parents length: ${parents.length}`);
             }
 
             // Update ring buffer
