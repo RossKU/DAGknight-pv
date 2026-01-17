@@ -352,6 +352,7 @@
 
             // DAA score reference for relative X coordinates
             minDaaScore: null,
+            maxDaaScore: null,
 
             // Viewport
             viewport: {
@@ -580,10 +581,16 @@
             // Set reference point on first block
             if (State.minDaaScore === null) {
                 State.minDaaScore = daaScore;
+                State.maxDaaScore = daaScore;
             }
 
             // X = relative DAA score * scale (50px per DAA score increment)
             State.blockData.x[index] = (daaScore - State.minDaaScore) * 50;
+
+            // Track max DAA score for viewport centering
+            if (daaScore > State.maxDaaScore) {
+                State.maxDaaScore = daaScore;
+            }
             State.blockData.y[index] = (Math.random() - 0.5) * 400; // Random Y for now
 
             // Color (default blue, will be updated by DAGknight calculation)
@@ -608,9 +615,9 @@
                 State.ringTail = (State.ringTail + 1) % CONFIG.MAX_BLOCKS;
             }
 
-            // Update viewport target (smooth scrolling happens in render loop)
-            const latestX = State.blockData.x[index];
-            State.viewport.targetX = latestX - State.viewport.width / 3;
+            // Update viewport target based on max DAA score (right edge follows newest blocks)
+            const maxX = (State.maxDaaScore - State.minDaaScore) * 50;
+            State.viewport.targetX = maxX - State.viewport.width * 0.7;  // Keep max at 70% from left
 
             // Update UI
             DOM.blockCount.textContent = State.blockCount.toLocaleString();
