@@ -585,6 +585,89 @@
         }
 
         // ------------------------------------------------------------
+        // DAGknight Algorithm
+        // ------------------------------------------------------------
+
+        // Step 2.2: Reachability - Check if blockA is ancestor of blockB
+        function isAncestor(hashA, hashB, maxDepth = 100) {
+            if (hashA === hashB) return true;
+
+            const visited = new Set();
+            const queue = [hashB];
+            let depth = 0;
+
+            while (queue.length > 0 && depth < maxDepth) {
+                const levelSize = queue.length;
+                for (let i = 0; i < levelSize; i++) {
+                    const currentHash = queue.shift();
+                    if (currentHash === hashA) return true;
+                    if (visited.has(currentHash)) continue;
+                    visited.add(currentHash);
+
+                    // Get parents of current block
+                    const idx = State.blockHashToIndex.get(currentHash);
+                    if (idx === undefined) continue;
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    for (const parentHash of parents) {
+                        if (!visited.has(parentHash)) {
+                            queue.push(parentHash);
+                        }
+                    }
+                }
+                depth++;
+            }
+            return false;
+        }
+
+        // Step 2.3: Find Latest Common Chain Ancestor (LCCA)
+        function findLCCA(hashes) {
+            if (hashes.length === 0) return null;
+            if (hashes.length === 1) return hashes[0];
+
+            // Build ancestor sets for each hash (BFS)
+            const ancestorSets = hashes.map(hash => {
+                const ancestors = new Set([hash]);
+                const queue = [hash];
+                let depth = 0;
+                while (queue.length > 0 && depth < 50) {
+                    const current = queue.shift();
+                    const idx = State.blockHashToIndex.get(current);
+                    if (idx === undefined) continue;
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    for (const p of parents) {
+                        if (!ancestors.has(p)) {
+                            ancestors.add(p);
+                            queue.push(p);
+                        }
+                    }
+                    depth++;
+                }
+                return ancestors;
+            });
+
+            // Find common ancestors (intersection)
+            let common = ancestorSets[0];
+            for (let i = 1; i < ancestorSets.length; i++) {
+                common = new Set([...common].filter(x => ancestorSets[i].has(x)));
+            }
+
+            // Return the one with highest DAA score (latest)
+            let lcca = null;
+            let maxDaa = -1;
+            for (const hash of common) {
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx !== undefined) {
+                    const daa = State.blockData.daaScore[idx];
+                    if (daa > maxDaa) {
+                        maxDaa = daa;
+                        lcca = hash;
+                    }
+                }
+            }
+            return lcca;
+        }
+
+        // ------------------------------------------------------------
         // Block Management
         // ------------------------------------------------------------
         function addBlock(blockInfo) {
