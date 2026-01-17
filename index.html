@@ -264,7 +264,7 @@
         <div id="legend">
             <div class="item"><div class="color color-blue"></div> Blue Block</div>
             <div class="item"><div class="color color-red"></div> Red Block</div>
-            <div class="item"><div class="color color-vspc"></div> VSPC</div>
+            <div class="item"><div class="color color-vspc"></div> Selected Chain</div>
             <div class="item"><div class="color color-cluster"></div> Honest Cluster</div>
         </div>
 
@@ -307,7 +307,7 @@
                 BACKGROUND: 0x0A0E17,
                 BLUE_BLOCK: 0x4A90D9,
                 RED_BLOCK: 0xE74C3C,
-                VSPC: 0x00FF88,
+                SELECTED_CHAIN: 0x00FF88,
                 EDGE: 0x334455,
                 EDGE_SELECTED: 0xFFFFFF,
                 HONEST_CLUSTER: 0x9B59B6,
@@ -379,8 +379,8 @@
                 edgeCount: 0,
             },
 
-            // VSPC (Virtual Selected Parent Chain)
-            vspc: [],
+            // Selected Chain (Selected Parent Chain)
+            selectedChain: [],
             lastDagknightCalc: 0,
 
             // Debug info
@@ -593,12 +593,12 @@
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
-            // Draw VSPC (Virtual Selected Parent Chain) as highlighted line
-            if (State.vspc && State.vspc.length > 1) {
-                let vspcDrawn = false;
-                for (let i = 0; i < State.vspc.length - 1; i++) {
-                    const hash1 = State.vspc[i];
-                    const hash2 = State.vspc[i + 1];
+            // Draw Selected Chain as highlighted line
+            if (State.selectedChain && State.selectedChain.length > 1) {
+                let chainDrawn = false;
+                for (let i = 0; i < State.selectedChain.length - 1; i++) {
+                    const hash1 = State.selectedChain[i];
+                    const hash2 = State.selectedChain[i + 1];
                     const idx1 = State.blockHashToIndex.get(hash1);
                     const idx2 = State.blockHashToIndex.get(hash2);
 
@@ -610,16 +610,16 @@
 
                         vspc.moveTo(screenX1, screenY1);
                         vspc.lineTo(screenX2, screenY2);
-                        vspcDrawn = true;
+                        chainDrawn = true;
                     }
                 }
-                if (vspcDrawn) {
-                    vspc.stroke({ width: 3, color: CONFIG.COLORS.VSPC, alpha: 0.8 });
+                if (chainDrawn) {
+                    vspc.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
                 }
             }
 
             // Update stats
-            State.stats.drawCalls = 4; // edges + blue blocks + red blocks + vspc
+            State.stats.drawCalls = 4; // edges + blue blocks + red blocks + chain
             State.stats.visibleBlocks = visibleCount;
             State.stats.edgeCount = edgeCount;
         }
@@ -851,15 +851,15 @@
             return selectParent(groupWinners, depth + 1);
         }
 
-        // Step 2.8: Build VSPC (Virtual Selected Parent Chain)
-        function buildVSPC(tipHashes, maxLength = 50) {
-            const vspc = [];
+        // Step 2.8: Build Selected Chain (Selected Parent Chain)
+        function buildSelectedChain(tipHashes, maxLength = 50) {
+            const chain = [];
 
             // Start from virtual block's selected parent
             let currentHash = selectParent(tipHashes);
 
-            while (currentHash && vspc.length < maxLength) {
-                vspc.push(currentHash);
+            while (currentHash && chain.length < maxLength) {
+                chain.push(currentHash);
 
                 const idx = State.blockHashToIndex.get(currentHash);
                 if (idx === undefined) break;
@@ -871,7 +871,7 @@
                 currentHash = selectParent(parents);
             }
 
-            return vspc;
+            return chain;
         }
 
         // Step 2.9: Run DAGknight calculation and update block positions
@@ -898,24 +898,24 @@
                 const tips = allHashes.filter(h => !hasChild.has(h));
                 if (tips.length === 0) return;
 
-                // Build VSPC from tips (with timeout protection)
+                // Build Selected Chain from tips (with timeout protection)
                 const startTime = performance.now();
-                const vspc = buildVSPC(tips.slice(0, 10));  // Limit tips to prevent slowdown
+                const chain = buildSelectedChain(tips.slice(0, 10));  // Limit tips to prevent slowdown
                 const calcTime = performance.now() - startTime;
 
-                State.vspc = vspc;
+                State.selectedChain = chain;
                 State.debug = {
                     tips: tips.length,
-                    vspcLen: vspc.length,
+                    chainLen: chain.length,
                     calcTime: calcTime.toFixed(1),
                 };
 
-                // Mark VSPC blocks: set targetY = 0 (they will animate to center)
-                const vspcSet = new Set(vspc);
+                // Mark chain blocks: set targetY = 0 (they will animate to center)
+                const chainSet = new Set(chain);
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
-                    if (vspcSet.has(hash)) {
-                        State.blockData.targetY[i] = 0;  // VSPC blocks go to Y=0
+                    if (chainSet.has(hash)) {
+                        State.blockData.targetY[i] = 0;  // Chain blocks go to Y=0
                         State.blockData.isBlue[i] = 1;
                     }
                 }
@@ -1106,7 +1106,7 @@
                 if (State.debug.error) {
                     debugText = `ERR: ${State.debug.error}`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} VSPC:${State.debug.vspcLen} T:${State.debug.calcTime}ms`;
+                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} T:${State.debug.calcTime}ms`;
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
