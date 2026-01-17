@@ -377,6 +377,10 @@
                 visibleBlocks: 0,
                 edgeCount: 0,
             },
+
+            // VSPC (Virtual Selected Parent Chain)
+            vspc: [],
+            lastDagknightCalc: 0,
         };
 
         // ------------------------------------------------------------
@@ -470,6 +474,12 @@
                 State.stats.frameCount = 0;
                 State.stats.lastFpsUpdate = now;
                 updateStatsDisplay();
+            }
+
+            // Run DAGknight calculation periodically (every 500ms)
+            if (now - State.lastDagknightCalc >= 500) {
+                runDAGknightCalculation();
+                State.lastDagknightCalc = now;
             }
 
             // Render blocks and edges
@@ -578,8 +588,33 @@
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
+            // Draw VSPC (Virtual Selected Parent Chain) as highlighted line
+            if (State.vspc && State.vspc.length > 1) {
+                let vspcDrawn = false;
+                for (let i = 0; i < State.vspc.length - 1; i++) {
+                    const hash1 = State.vspc[i];
+                    const hash2 = State.vspc[i + 1];
+                    const idx1 = State.blockHashToIndex.get(hash1);
+                    const idx2 = State.blockHashToIndex.get(hash2);
+
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+
+                        vspc.moveTo(screenX1, screenY1);
+                        vspc.lineTo(screenX2, screenY2);
+                        vspcDrawn = true;
+                    }
+                }
+                if (vspcDrawn) {
+                    vspc.stroke({ width: 3, color: CONFIG.COLORS.VSPC, alpha: 0.8 });
+                }
+            }
+
             // Update stats
-            State.stats.drawCalls = 3; // edges + blue blocks + red blocks
+            State.stats.drawCalls = 4; // edges + blue blocks + red blocks + vspc
             State.stats.visibleBlocks = visibleCount;
             State.stats.edgeCount = edgeCount;
         }
@@ -665,6 +700,198 @@
                 }
             }
             return lcca;
+        }
+
+        // Step 2.4: Group blocks by conflict zone origin
+        // Returns Map<conflictOriginHash, blockHash[]>
+        function groupByConflictZone(blockHashes, lccaHash) {
+            const groups = new Map();  // conflictOrigin -> [blockHashes]
+
+            for (const blockHash of blockHashes) {
+                // Find the first block after LCCA on path from block to LCCA
+                const conflictOrigin = findConflictOrigin(blockHash, lccaHash);
+
+                if (!groups.has(conflictOrigin)) {
+                    groups.set(conflictOrigin, []);
+                }
+                groups.get(conflictOrigin).push(blockHash);
+            }
+
+            return groups;
+        }
+
+        // Find conflict origin: first block after LCCA on the path from block to LCCA
+        function findConflictOrigin(blockHash, lccaHash) {
+            if (blockHash === lccaHash) return lccaHash;
+
+            // BFS from block to LCCA, tracking path
+            const parent = new Map();  // child -> parent (for path reconstruction)
+            const visited = new Set([blockHash]);
+            const queue = [blockHash];
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+                if (current === lccaHash) break;
+
+                const idx = State.blockHashToIndex.get(current);
+                if (idx === undefined) continue;
+
+                const parents = State.blockData.parentHashes[idx] || [];
+                for (const p of parents) {
+                    if (!visited.has(p)) {
+                        visited.add(p);
+                        parent.set(p, current);
+                        queue.push(p);
+                    }
+                }
+            }
+
+            // Reconstruct path from LCCA back to block, return first child of LCCA
+            if (!visited.has(lccaHash)) return blockHash;  // No path found
+
+            let current = lccaHash;
+            let prev = null;
+
+            // Walk from LCCA to block via parent map (reversed)
+            // We need to find the child of LCCA (first step away from LCCA toward block)
+            const pathToBlock = [lccaHash];
+            const lccaIdx = State.blockHashToIndex.get(lccaHash);
+            if (lccaIdx === undefined) return blockHash;
+
+            // Reverse: find which visited block has LCCA as parent
+            for (const [child, p] of parent.entries()) {
+                if (p === lccaHash || isAncestor(lccaHash, p, 5)) {
+                    // This child is close to LCCA
+                    if (isAncestor(child, blockHash, 50) || child === blockHash) {
+                        return child;
+                    }
+                }
+            }
+
+            return blockHash;  // Fallback
+        }
+
+        // Step 2.5: Compare RankValue (k, blueWork, selectedParentHash)
+        function compareRank(hashA, hashB) {
+            const idxA = State.blockHashToIndex.get(hashA);
+            const idxB = State.blockHashToIndex.get(hashB);
+            if (idxA === undefined || idxB === undefined) return 0;
+
+            // Compare blueWork (higher is better)
+            const blueWorkA = BigInt(State.blockData.blueWork[idxA] || '0');
+            const blueWorkB = BigInt(State.blockData.blueWork[idxB] || '0');
+
+            if (blueWorkA > blueWorkB) return -1;  // A wins
+            if (blueWorkA < blueWorkB) return 1;   // B wins
+
+            // Tiebreaker: hash (lexicographic, lower wins)
+            if (hashA < hashB) return -1;
+            if (hashA > hashB) return 1;
+
+            return 0;
+        }
+
+        // Step 2.6: Select best block from a group using RankValue
+        function selectBestFromGroup(blockHashes) {
+            if (blockHashes.length === 0) return null;
+            if (blockHashes.length === 1) return blockHashes[0];
+
+            let best = blockHashes[0];
+            for (let i = 1; i < blockHashes.length; i++) {
+                if (compareRank(blockHashes[i], best) < 0) {
+                    best = blockHashes[i];
+                }
+            }
+            return best;
+        }
+
+        // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
+        function selectParent(parentHashes) {
+            if (parentHashes.length === 0) return null;
+            if (parentHashes.length === 1) return parentHashes[0];
+
+            // Find LCCA
+            const lcca = findLCCA(parentHashes);
+            if (!lcca) return parentHashes[0];
+
+            // Group by conflict zone
+            const groups = groupByConflictZone(parentHashes, lcca);
+
+            // If only one group, select best from that group
+            if (groups.size <= 1) {
+                return selectBestFromGroup(parentHashes);
+            }
+
+            // Select best block from each group
+            const groupWinners = [];
+            for (const [origin, members] of groups.entries()) {
+                const winner = selectBestFromGroup(members);
+                if (winner) groupWinners.push(winner);
+            }
+
+            // Recursively select among group winners
+            return selectParent(groupWinners);
+        }
+
+        // Step 2.8: Build VSPC (Virtual Selected Parent Chain)
+        function buildVSPC(tipHashes, maxLength = 50) {
+            const vspc = [];
+
+            // Start from virtual block's selected parent
+            let currentHash = selectParent(tipHashes);
+
+            while (currentHash && vspc.length < maxLength) {
+                vspc.push(currentHash);
+
+                const idx = State.blockHashToIndex.get(currentHash);
+                if (idx === undefined) break;
+
+                const parents = State.blockData.parentHashes[idx] || [];
+                if (parents.length === 0) break;
+
+                // Select parent for this block
+                currentHash = selectParent(parents);
+            }
+
+            return vspc;
+        }
+
+        // Step 2.9: Run DAGknight calculation and update block positions
+        function runDAGknightCalculation() {
+            if (State.blockCount < 2) return;
+
+            // Find all tips (blocks with no children)
+            const allHashes = [];
+            for (let i = 0; i < State.blockCount; i++) {
+                const hash = State.blockData.hashes[i];
+                if (hash) allHashes.push(hash);
+            }
+
+            // Find tips by checking which blocks are not parents of any other block
+            const hasChild = new Set();
+            for (let i = 0; i < State.blockCount; i++) {
+                const parents = State.blockData.parentHashes[i] || [];
+                for (const p of parents) {
+                    hasChild.add(p);
+                }
+            }
+
+            const tips = allHashes.filter(h => !hasChild.has(h));
+            if (tips.length === 0) return;
+
+            // Build VSPC from tips
+            const vspc = buildVSPC(tips);
+            State.vspc = vspc;
+
+            // Mark VSPC blocks: set targetY = 0 (they will animate to center)
+            const vspcSet = new Set(vspc);
+            for (let i = 0; i < State.blockCount; i++) {
+                const hash = State.blockData.hashes[i];
+                if (vspcSet.has(hash)) {
+                    State.blockData.targetY[i] = 0;  // VSPC blocks go to Y=0
+                    State.blockData.isBlue[i] = 1;
+                }
+            }
         }
 
         // ------------------------------------------------------------
