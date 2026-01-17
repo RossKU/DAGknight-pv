@@ -1094,8 +1094,15 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                State.selectedChainEdges = edges;
-                State.selectedChainBlocks = chainBlocks;
+                // Build Selected Chain edges from chainList (single chain, dkoder compliant)
+                // Only edges from the linearization chain, not from all tips
+                const singleChainEdges = [];
+                for (let i = 0; i < chainList.length - 1; i++) {
+                    singleChainEdges.push([chainList[i], chainList[i + 1]]);
+                }
+
+                State.selectedChainEdges = singleChainEdges;
+                State.selectedChainBlocks = new Set(chainList);
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
