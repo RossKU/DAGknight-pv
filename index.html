@@ -297,10 +297,10 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v11-edge-persist',
+            VERSION: 'v12-lcca',
 
             // Display
-            MAX_BLOCKS: 1000,
+            MAX_BLOCKS: 500,
             MAX_EDGES: 500,
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
@@ -392,6 +392,7 @@
             selectedChainBlocks: new Set(),  // Blocks on selected chain
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
+            lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -612,6 +613,24 @@
             // Fill all blocks at once (2 draw calls: blue + red)
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
+
+            // Draw LCCA block (larger green block at convergence point)
+            if (State.lccaHash) {
+                const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
+                if (lccaIdx !== undefined) {
+                    const lccaScreenX = (x[lccaIdx] - vpX) * zoom + halfWidth;
+                    const lccaScreenY = (y[lccaIdx] - vpY) * zoom + halfHeight;
+
+                    // Only draw if visible
+                    if (lccaScreenX >= -50 && lccaScreenX <= width + 50 &&
+                        lccaScreenY >= -50 && lccaScreenY <= height + 50) {
+                        const lccaSize = 14 * zoom;  // Larger than normal blocks (8px)
+                        const lccaHalfSize = lccaSize / 2;
+                        vspc.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
+                        vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Green
+                    }
+                }
+            }
 
             // Draw Selected Chain edges (from each Tip, merging at LCCA)
             // Skip edges where both endpoints have converged to Y≈0
@@ -1130,6 +1149,10 @@
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
+
+                // Find LCCA (convergence point where all tip paths meet)
+                const lccaHash = findLCCA(tips.slice(0, 10));
+                State.lccaHash = lccaHash;
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
