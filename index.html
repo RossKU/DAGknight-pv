@@ -380,7 +380,8 @@
             },
 
             // Selected Chain (Selected Parent Chain)
-            selectedChain: [],
+            selectedChainEdges: [],    // [[fromHash, toHash], ...]
+            selectedChainBlocks: new Set(),  // All blocks on chain
             lastDagknightCalc: 0,
 
             // Debug info
@@ -593,14 +594,12 @@
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
-            // Draw Selected Chain as highlighted line
-            if (State.selectedChain && State.selectedChain.length > 1) {
+            // Draw Selected Chain edges (from each Tip, merging at LCCA)
+            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 let chainDrawn = false;
-                for (let i = 0; i < State.selectedChain.length - 1; i++) {
-                    const hash1 = State.selectedChain[i];
-                    const hash2 = State.selectedChain[i + 1];
-                    const idx1 = State.blockHashToIndex.get(hash1);
-                    const idx2 = State.blockHashToIndex.get(hash2);
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
                         const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
@@ -851,27 +850,43 @@
             return selectParent(groupWinners, depth + 1);
         }
 
-        // Step 2.8: Build Selected Chain (Selected Parent Chain)
-        function buildSelectedChain(tipHashes, maxLength = 50) {
-            const chain = [];
+        // Step 2.8: Build Selected Chains from each Tip
+        // Returns array of edges: [[from, to], [from, to], ...]
+        function buildSelectedChains(tipHashes, maxDepth = 50) {
+            const edges = [];           // [fromHash, toHash] pairs
+            const visited = new Set();  // Avoid duplicate edges after merge
+            const chainBlocks = new Set(); // All blocks on selected chains
 
-            // Start from virtual block's selected parent
-            let currentHash = selectParent(tipHashes);
+            for (const tip of tipHashes) {
+                let currentHash = tip;
+                let depth = 0;
 
-            while (currentHash && chain.length < maxLength) {
-                chain.push(currentHash);
+                while (currentHash && depth < maxDepth) {
+                    const idx = State.blockHashToIndex.get(currentHash);
+                    if (idx === undefined) break;
 
-                const idx = State.blockHashToIndex.get(currentHash);
-                if (idx === undefined) break;
+                    chainBlocks.add(currentHash);
 
-                const parents = State.blockData.parentHashes[idx] || [];
-                if (parents.length === 0) break;
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
 
-                // Select parent for this block
-                currentHash = selectParent(parents);
+                    // Select parent for this block
+                    const selectedParent = selectParent(parents);
+                    if (!selectedParent) break;
+
+                    // Add edge if not already visited (avoid duplicates after merge)
+                    const edgeKey = `${currentHash}->${selectedParent}`;
+                    if (!visited.has(edgeKey)) {
+                        visited.add(edgeKey);
+                        edges.push([currentHash, selectedParent]);
+                    }
+
+                    currentHash = selectedParent;
+                    depth++;
+                }
             }
 
-            return chain;
+            return { edges, chainBlocks };
         }
 
         // Step 2.9: Run DAGknight calculation and update block positions
@@ -898,23 +913,24 @@
                 const tips = allHashes.filter(h => !hasChild.has(h));
                 if (tips.length === 0) return;
 
-                // Build Selected Chain from tips (with timeout protection)
+                // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
-                const chain = buildSelectedChain(tips.slice(0, 10));  // Limit tips to prevent slowdown
+                const { edges, chainBlocks } = buildSelectedChains(tips.slice(0, 10));  // Limit tips
                 const calcTime = performance.now() - startTime;
 
-                State.selectedChain = chain;
+                State.selectedChainEdges = edges;
+                State.selectedChainBlocks = chainBlocks;
                 State.debug = {
                     tips: tips.length,
-                    chainLen: chain.length,
+                    chainLen: chainBlocks.size,
+                    edgeCount: edges.length,
                     calcTime: calcTime.toFixed(1),
                 };
 
                 // Mark chain blocks: set targetY = 0 (they will animate to center)
-                const chainSet = new Set(chain);
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
-                    if (chainSet.has(hash)) {
+                    if (chainBlocks.has(hash)) {
                         State.blockData.targetY[i] = 0;  // Chain blocks go to Y=0
                         State.blockData.isBlue[i] = 1;
                     }
@@ -1106,7 +1122,7 @@
                 if (State.debug.error) {
                     debugText = `ERR: ${State.debug.error}`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} T:${State.debug.calcTime}ms`;
+                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} E:${State.debug.edgeCount} T:${State.debug.calcTime}ms`;
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
