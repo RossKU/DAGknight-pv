@@ -339,10 +339,13 @@
                 parentHashes: new Array(CONFIG.MAX_BLOCKS),  // Store parent hashes for dynamic resolution
                 x: new Float32Array(CONFIG.MAX_BLOCKS),
                 y: new Float32Array(CONFIG.MAX_BLOCKS),
+                targetY: new Float32Array(CONFIG.MAX_BLOCKS),  // For smooth Y animation
                 color: new Uint32Array(CONFIG.MAX_BLOCKS),
                 size: new Float32Array(CONFIG.MAX_BLOCKS),
                 isBlue: new Uint8Array(CONFIG.MAX_BLOCKS),
                 daaScore: new Float64Array(CONFIG.MAX_BLOCKS),
+                blueScore: new Float64Array(CONFIG.MAX_BLOCKS),
+                blueWork: new Array(CONFIG.MAX_BLOCKS),  // BigInt as string
             },
             blockCount: 0,
             blockHashToIndex: new Map(),
@@ -482,6 +485,12 @@
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
 
+            // Smooth Y animation for all blocks (lerp to targetY)
+            const { y, targetY } = State.blockData;
+            for (let i = 0; i < State.blockCount; i++) {
+                y[i] += (targetY[i] - y[i]) * 0.15;
+            }
+
             // Clear previous frame (reuse same objects)
             edges.clear();
             blueBlocks.clear();
@@ -490,7 +499,7 @@
 
             if (State.blockCount === 0) return;
 
-            const { x, y, size, isBlue, parentHashes } = State.blockData;
+            const { x, size, isBlue, parentHashes } = State.blockData;
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
@@ -609,7 +618,15 @@
             if (daaScore > State.maxDaaScore) {
                 State.maxDaaScore = daaScore;
             }
-            State.blockData.y[index] = (Math.random() - 0.5) * 400; // Random Y for now
+
+            // Y = random initially, will converge to 0 after DAGknight calculation
+            const randomY = (Math.random() - 0.5) * 400;
+            State.blockData.y[index] = randomY;
+            State.blockData.targetY[index] = randomY;  // Same as y initially
+
+            // Store blueScore and blueWork for DAGknight calculation
+            State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
+            State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
 
             // Color (default blue, will be updated by DAGknight calculation)
             State.blockData.color[index] = CONFIG.COLORS.BLUE_BLOCK;
