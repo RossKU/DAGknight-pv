@@ -302,7 +302,7 @@
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
-            RIGHT_EDGE: 10000,  // Fixed reference point for right-aligned linearization
+            SPAWN_X: 400,  // Screen-relative: blocks spawn at right side (relative to center 0)
 
             // Colors
             COLORS: {
@@ -365,9 +365,9 @@
 
             // Viewport
             viewport: {
-                x: 10000 - 700,  // Start near RIGHT_EDGE
+                x: 0,  // Center at origin
                 y: 0,
-                targetX: 10000 - 700,  // For smooth scrolling
+                targetX: 0,  // Fixed camera (no scrolling needed)
                 zoom: 1,
                 width: 0,
                 height: 0,
@@ -1114,34 +1114,32 @@
                 };
 
                 // Assign linearIndex and targetX to linearized blocks
-                // Right-aligned: newest at fixed right edge, oldest spreads left
+                // Screen-relative: newest at SPAWN_X, oldest spreads left
                 const maxLinearIdx = linearOrder.length - 1;
-                const RIGHT_EDGE = CONFIG.RIGHT_EDGE;
+                const SPAWN_X = CONFIG.SPAWN_X;
 
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     const linearIdx = linearOrder.indexOf(hash);
 
                     if (linearIdx !== -1) {
-                        // Block is linearized - right aligned
-                        // linearIdx=max (newest) → X=RIGHT_EDGE
-                        // linearIdx=0 (oldest) → X=RIGHT_EDGE - maxLinearIdx*PITCH
+                        // Block is linearized - right aligned from SPAWN_X
+                        // linearIdx=max (newest) → X=SPAWN_X
+                        // linearIdx=0 (oldest) → X=SPAWN_X - maxLinearIdx*PITCH (goes left)
                         State.blockData.linearIndex[i] = linearIdx;
-                        State.blockData.targetX[i] = RIGHT_EDGE - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                        State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
                         State.blockData.targetY[i] = 0;
                         State.blockData.isBlue[i] = 1;
                     } else {
-                        // Block not yet linearized - place close to newest linearized
+                        // Block not yet linearized - place just right of SPAWN_X
                         State.blockData.linearIndex[i] = -1;
-                        State.blockData.targetX[i] = RIGHT_EDGE + 15;
+                        State.blockData.targetX[i] = SPAWN_X + 20;
                         // targetY stays at random position
                     }
                 }
 
-                // Update viewport to follow the right edge (newest blocks at screen 70%)
-                if (linearOrder.length > 0) {
-                    State.viewport.targetX = RIGHT_EDGE - State.viewport.width * 0.7;
-                }
+                // Viewport stays fixed at center (0, 0)
+                // No scrolling needed with screen-relative coordinates
             } catch (error) {
                 State.debug = { error: error.message };
                 console.error('DAGknight calculation error:', error);
@@ -1180,13 +1178,13 @@
                 State.maxDaaScore = daaScore;
             }
 
-            // X = near RIGHT_EDGE (new blocks appear close to linearized blocks)
+            // X = SPAWN_X (screen-relative: right side of center)
             // Small random offset to spread tips visually
-            const tipOffset = 5 + Math.random() * 15;
-            State.blockData.x[index] = CONFIG.RIGHT_EDGE + tipOffset;
+            const tipOffset = 10 + Math.random() * 30;
+            State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
 
-            // Y = random initially, will converge to 0 after DAGknight calculation
-            const randomY = (Math.random() - 0.5) * 400;
+            // Y = random (spread vertically around center)
+            const randomY = (Math.random() - 0.5) * 300;
             State.blockData.y[index] = randomY;
             State.blockData.targetY[index] = randomY;  // Same as y initially
 
@@ -1215,9 +1213,7 @@
                 State.blockCount++;
             }
 
-            // Update viewport target based on max DAA score (right edge follows newest blocks)
-            const maxX = (State.maxDaaScore - State.minDaaScore) * 50;
-            State.viewport.targetX = maxX - State.viewport.width * 0.7;  // Keep max at 70% from left
+            // Viewport stays at center (0, 0) - no need to update
 
             // Update UI
             DOM.blockCount.textContent = State.blockCount.toLocaleString();
