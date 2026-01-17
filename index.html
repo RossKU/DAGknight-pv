@@ -365,9 +365,9 @@
 
             // Viewport
             viewport: {
-                x: 0,
+                x: 10000 - 700,  // Start near RIGHT_EDGE
                 y: 0,
-                targetX: 0,  // For smooth scrolling
+                targetX: 10000 - 700,  // For smooth scrolling
                 zoom: 1,
                 width: 0,
                 height: 0,
@@ -506,6 +506,18 @@
 
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
+
+            // Smooth X and Y animation for all blocks (lerp to targets)
+            const { x, y, targetX, targetY, linearIndex } = State.blockData;
+            for (let i = 0; i < State.blockCount; i++) {
+                // Y animation (all blocks)
+                y[i] += (targetY[i] - y[i]) * 0.15;
+
+                // X animation (only for linearized blocks)
+                if (linearIndex[i] >= 0) {
+                    x[i] += (targetX[i] - x[i]) * 0.1;
+                }
+            }
 
             // Clear previous frame (reuse same objects)
             edges.clear();
@@ -1082,7 +1094,8 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Build Selected Chain edges from chainList (single chain)
+                // Build Selected Chain edges from chainList (single chain, dkoder compliant)
+                // Only edges from the linearization chain, not from all tips
                 const singleChainEdges = [];
                 for (let i = 0; i < chainList.length - 1; i++) {
                     singleChainEdges.push([chainList[i], chainList[i + 1]]);
@@ -1090,17 +1103,44 @@
 
                 State.selectedChainEdges = singleChainEdges;
                 State.selectedChainBlocks = new Set(chainList);
+                State.orderedBlocks = orderedBlocks;
+                State.linearOrder = linearOrder;
 
                 State.debug = {
                     tips: tips.length,
                     chainLen: chainList.length,
+                    linearLen: linearOrder.length,
                     calcTime: calcTime.toFixed(1),
                 };
 
-                // Update viewport to follow DAA-based position (newest blocks)
-                if (State.maxDaaScore !== null && State.minDaaScore !== null) {
-                    const maxX = (State.maxDaaScore - State.minDaaScore) * 50;
-                    State.viewport.targetX = maxX - State.viewport.width * 0.7;
+                // Assign linearIndex and targetX to linearized blocks
+                // Right-aligned: newest at fixed right edge, oldest spreads left
+                const maxLinearIdx = linearOrder.length - 1;
+                const RIGHT_EDGE = CONFIG.RIGHT_EDGE;
+
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    const linearIdx = linearOrder.indexOf(hash);
+
+                    if (linearIdx !== -1) {
+                        // Block is linearized - right aligned
+                        // linearIdx=max (newest) → X=RIGHT_EDGE
+                        // linearIdx=0 (oldest) → X=RIGHT_EDGE - maxLinearIdx*PITCH
+                        State.blockData.linearIndex[i] = linearIdx;
+                        State.blockData.targetX[i] = RIGHT_EDGE - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                        State.blockData.targetY[i] = 0;
+                        State.blockData.isBlue[i] = 1;
+                    } else {
+                        // Block not yet linearized - place to the right of newest linearized
+                        State.blockData.linearIndex[i] = -1;
+                        State.blockData.targetX[i] = RIGHT_EDGE + 50;
+                        // targetY stays at random position
+                    }
+                }
+
+                // Update viewport to follow the right edge (newest blocks at screen 70%)
+                if (linearOrder.length > 0) {
+                    State.viewport.targetX = RIGHT_EDGE - State.viewport.width * 0.7;
                 }
             } catch (error) {
                 State.debug = { error: error.message };
@@ -1135,17 +1175,24 @@
                 State.maxDaaScore = daaScore;
             }
 
-            // Track DAA score range
+            // Track DAA score range (for reference)
             if (daaScore > State.maxDaaScore) {
                 State.maxDaaScore = daaScore;
             }
 
-            // X = DAA score based (50px per DAA score increment)
-            State.blockData.x[index] = (daaScore - State.minDaaScore) * 50;
+            // X = near RIGHT_EDGE (new blocks appear on right side)
+            // Small random offset to spread tips visually
+            const tipOffset = 50 + Math.random() * 100;
+            State.blockData.x[index] = CONFIG.RIGHT_EDGE + tipOffset;
 
-            // Y = random (spread vertically)
+            // Y = random initially, will converge to 0 after DAGknight calculation
             const randomY = (Math.random() - 0.5) * 400;
             State.blockData.y[index] = randomY;
+            State.blockData.targetY[index] = randomY;  // Same as y initially
+
+            // X target = same as X initially (will be updated by linearization)
+            State.blockData.targetX[index] = State.blockData.x[index];
+            State.blockData.linearIndex[index] = -1;  // Not linearized yet
 
             // Store blueScore and blueWork for DAGknight calculation
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
@@ -1288,7 +1335,7 @@
                 if (State.debug.error) {
                     debugText = `ERR: ${State.debug.error}`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} T:${State.debug.calcTime}ms`;
+                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Lin:${State.debug.linearLen} T:${State.debug.calcTime}ms`;
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
