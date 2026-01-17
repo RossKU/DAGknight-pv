@@ -581,6 +581,12 @@
         function addBlock(blockInfo) {
             const index = State.ringHead;
 
+            // Remove oldest block BEFORE overwriting (Ring Buffer bug fix)
+            if (State.blockCount >= CONFIG.MAX_BLOCKS) {
+                const oldestHash = State.blockData.hashes[index];
+                State.blockHashToIndex.delete(oldestHash);
+            }
+
             // Store hash (WASM SDK uses header.hash, not block.hash)
             const hash = blockInfo.header.hash;
             State.blockData.hashes[index] = hash;
@@ -620,11 +626,6 @@
             State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
             if (State.blockCount < CONFIG.MAX_BLOCKS) {
                 State.blockCount++;
-            } else {
-                // Remove oldest block from hash map
-                const oldestHash = State.blockData.hashes[State.ringTail];
-                State.blockHashToIndex.delete(oldestHash);
-                State.ringTail = (State.ringTail + 1) % CONFIG.MAX_BLOCKS;
             }
 
             // Update viewport target based on max DAA score (right edge follows newest blocks)
