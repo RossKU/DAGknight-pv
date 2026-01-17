@@ -1131,9 +1131,9 @@
                         State.blockData.targetY[i] = 0;
                         State.blockData.isBlue[i] = 1;
                     } else {
-                        // Block not yet linearized - place to the right of newest linearized
+                        // Block not yet linearized - place close to newest linearized
                         State.blockData.linearIndex[i] = -1;
-                        State.blockData.targetX[i] = RIGHT_EDGE + 50;
+                        State.blockData.targetX[i] = RIGHT_EDGE + 15;
                         // targetY stays at random position
                     }
                 }
@@ -1180,9 +1180,9 @@
                 State.maxDaaScore = daaScore;
             }
 
-            // X = near RIGHT_EDGE (new blocks appear on right side)
+            // X = near RIGHT_EDGE (new blocks appear close to linearized blocks)
             // Small random offset to spread tips visually
-            const tipOffset = 50 + Math.random() * 100;
+            const tipOffset = 5 + Math.random() * 15;
             State.blockData.x[index] = CONFIG.RIGHT_EDGE + tipOffset;
 
             // Y = random initially, will converge to 0 after DAGknight calculation
