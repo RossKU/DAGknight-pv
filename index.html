@@ -258,6 +258,7 @@
             <div class="fps" id="fps-display">-- FPS</div>
             <div id="draw-calls">Draw calls: -</div>
             <div id="memory-usage">Memory: -</div>
+            <div id="debug-info" style="font-size: 10px; color: #888; margin-top: 8px;"></div>
         </div>
 
         <div id="legend">
@@ -381,6 +382,9 @@
             // VSPC (Virtual Selected Parent Chain)
             vspc: [],
             lastDagknightCalc: 0,
+
+            // Debug info
+            debug: null,
         };
 
         // ------------------------------------------------------------
@@ -403,6 +407,7 @@
             btnReset: document.getElementById('btn-reset'),
             btnZoomIn: document.getElementById('btn-zoom-in'),
             btnZoomOut: document.getElementById('btn-zoom-out'),
+            debugInfo: document.getElementById('debug-info'),
         };
 
         // ------------------------------------------------------------
@@ -860,37 +865,50 @@
         function runDAGknightCalculation() {
             if (State.blockCount < 2) return;
 
-            // Find all tips (blocks with no children)
-            const allHashes = [];
-            for (let i = 0; i < State.blockCount; i++) {
-                const hash = State.blockData.hashes[i];
-                if (hash) allHashes.push(hash);
-            }
-
-            // Find tips by checking which blocks are not parents of any other block
-            const hasChild = new Set();
-            for (let i = 0; i < State.blockCount; i++) {
-                const parents = State.blockData.parentHashes[i] || [];
-                for (const p of parents) {
-                    hasChild.add(p);
+            try {
+                // Find all tips (blocks with no children)
+                const allHashes = [];
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    if (hash) allHashes.push(hash);
                 }
-            }
 
-            const tips = allHashes.filter(h => !hasChild.has(h));
-            if (tips.length === 0) return;
-
-            // Build VSPC from tips
-            const vspc = buildVSPC(tips);
-            State.vspc = vspc;
-
-            // Mark VSPC blocks: set targetY = 0 (they will animate to center)
-            const vspcSet = new Set(vspc);
-            for (let i = 0; i < State.blockCount; i++) {
-                const hash = State.blockData.hashes[i];
-                if (vspcSet.has(hash)) {
-                    State.blockData.targetY[i] = 0;  // VSPC blocks go to Y=0
-                    State.blockData.isBlue[i] = 1;
+                // Find tips by checking which blocks are not parents of any other block
+                const hasChild = new Set();
+                for (let i = 0; i < State.blockCount; i++) {
+                    const parents = State.blockData.parentHashes[i] || [];
+                    for (const p of parents) {
+                        hasChild.add(p);
+                    }
                 }
+
+                const tips = allHashes.filter(h => !hasChild.has(h));
+                if (tips.length === 0) return;
+
+                // Build VSPC from tips (with timeout protection)
+                const startTime = performance.now();
+                const vspc = buildVSPC(tips.slice(0, 10));  // Limit tips to prevent slowdown
+                const calcTime = performance.now() - startTime;
+
+                State.vspc = vspc;
+                State.debug = {
+                    tips: tips.length,
+                    vspcLen: vspc.length,
+                    calcTime: calcTime.toFixed(1),
+                };
+
+                // Mark VSPC blocks: set targetY = 0 (they will animate to center)
+                const vspcSet = new Set(vspc);
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    if (vspcSet.has(hash)) {
+                        State.blockData.targetY[i] = 0;  // VSPC blocks go to Y=0
+                        State.blockData.isBlue[i] = 1;
+                    }
+                }
+            } catch (error) {
+                State.debug = { error: error.message };
+                console.error('DAGknight calculation error:', error);
             }
         }
 
@@ -1067,6 +1085,27 @@
                 DOM.memoryUsage.textContent = `Mem: ${mb}MB | Edges: ${State.stats.edgeCount}`;
             } else {
                 DOM.memoryUsage.textContent = `Edges: ${State.stats.edgeCount}`;
+            }
+
+            // Debug info
+            if (State.debug && DOM.debugInfo) {
+                let debugText = '';
+                if (State.debug.error) {
+                    debugText = `ERR: ${State.debug.error}`;
+                } else {
+                    debugText = `Tips:${State.debug.tips} VSPC:${State.debug.vspcLen} T:${State.debug.calcTime}ms`;
+                }
+                // Add Y range info
+                let minY = Infinity, maxY = -Infinity;
+                for (let i = 0; i < State.blockCount; i++) {
+                    const yVal = State.blockData.y[i];
+                    if (yVal < minY) minY = yVal;
+                    if (yVal > maxY) maxY = yVal;
+                }
+                if (State.blockCount > 0) {
+                    debugText += ` | Y:[${minY.toFixed(0)},${maxY.toFixed(0)}]`;
+                }
+                DOM.debugInfo.textContent = debugText;
             }
         }
 
