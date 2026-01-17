@@ -297,10 +297,10 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v12-lcca',
+            VERSION: 'v13-lcca-accum',
 
             // Display
-            MAX_BLOCKS: 500,
+            MAX_BLOCKS: 300,
             MAX_EDGES: 500,
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
@@ -392,7 +392,7 @@
             selectedChainBlocks: new Set(),  // Blocks on selected chain
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
-            lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
+            lccaHashes: [],  // Accumulated LCCAs (kept until Y=0, like edges)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -614,20 +614,24 @@
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
-            // Draw LCCA block (larger green block at convergence point)
-            if (State.lccaHash) {
-                const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
-                if (lccaIdx !== undefined) {
-                    const lccaScreenX = (x[lccaIdx] - vpX) * zoom + halfWidth;
-                    const lccaScreenY = (y[lccaIdx] - vpY) * zoom + halfHeight;
+            // Draw LCCA blocks (larger green blocks at convergence points)
+            // Multiple LCCAs may exist due to accumulation (like edges)
+            if (State.lccaHashes && State.lccaHashes.length > 0) {
+                for (const lccaHash of State.lccaHashes) {
+                    const lccaIdx = State.blockHashToIndex.get(lccaHash);
+                    if (lccaIdx !== undefined) {
+                        const lccaScreenX = (x[lccaIdx] - vpX) * zoom + halfWidth;
+                        const lccaScreenY = (y[lccaIdx] - vpY) * zoom + halfHeight;
 
-                    // Only draw if visible
-                    if (lccaScreenX >= -50 && lccaScreenX <= width + 50 &&
-                        lccaScreenY >= -50 && lccaScreenY <= height + 50) {
-                        const lccaSize = 14 * zoom;  // Larger than normal blocks (8px)
-                        const lccaHalfSize = lccaSize / 2;
-                        vspc.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
-                        vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Green
+                        // Only draw if visible and not yet converged to Y=0
+                        if (lccaScreenX >= -50 && lccaScreenX <= width + 50 &&
+                            lccaScreenY >= -50 && lccaScreenY <= height + 50 &&
+                            Math.abs(y[lccaIdx]) > 5) {
+                            const lccaSize = 14 * zoom;  // Larger than normal blocks (8px)
+                            const lccaHalfSize = lccaSize / 2;
+                            vspc.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
+                            vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Green
+                        }
                     }
                 }
             }
@@ -1151,8 +1155,26 @@
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
 
                 // Find LCCA (convergence point where all tip paths meet)
-                const lccaHash = findLCCA(tips.slice(0, 10));
-                State.lccaHash = lccaHash;
+                const newLccaHash = findLCCA(tips.slice(0, 10));
+
+                // Accumulate LCCAs (like edges - keep until Y=0)
+                const { y } = State.blockData;
+                const survivingLccas = [];
+
+                // Keep old LCCAs that haven't converged yet
+                for (const hash of State.lccaHashes) {
+                    const idx = State.blockHashToIndex.get(hash);
+                    if (idx !== undefined && Math.abs(y[idx]) > 5) {
+                        survivingLccas.push(hash);
+                    }
+                }
+
+                // Add new LCCA if not already present
+                if (newLccaHash && !survivingLccas.includes(newLccaHash)) {
+                    survivingLccas.push(newLccaHash);
+                }
+
+                State.lccaHashes = survivingLccas;
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
