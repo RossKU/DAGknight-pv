@@ -301,6 +301,7 @@
             MAX_EDGES: 500,
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
+            LINEAR_PITCH: 20,  // X spacing between linearized blocks
 
             // Colors
             COLORS: {
@@ -340,7 +341,9 @@
                 parentHashes: new Array(CONFIG.MAX_BLOCKS),  // Store parent hashes for dynamic resolution
                 x: new Float32Array(CONFIG.MAX_BLOCKS),
                 y: new Float32Array(CONFIG.MAX_BLOCKS),
+                targetX: new Float32Array(CONFIG.MAX_BLOCKS),  // For smooth X animation (linearization)
                 targetY: new Float32Array(CONFIG.MAX_BLOCKS),  // For smooth Y animation
+                linearIndex: new Int32Array(CONFIG.MAX_BLOCKS),  // -1 = not linearized yet
                 color: new Uint32Array(CONFIG.MAX_BLOCKS),
                 size: new Float32Array(CONFIG.MAX_BLOCKS),
                 isBlue: new Uint8Array(CONFIG.MAX_BLOCKS),
@@ -383,6 +386,7 @@
             selectedChainEdges: [],    // [[fromHash, toHash], ...]
             selectedChainBlocks: new Set(),  // Blocks on selected chain
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
+            linearOrder: [],  // Final linearized order [hash, hash, ...]
             lastDagknightCalc: 0,
 
             // Debug info
@@ -502,10 +506,16 @@
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
 
-            // Smooth Y animation for all blocks (lerp to targetY)
-            const { y, targetY } = State.blockData;
+            // Smooth X and Y animation for all blocks (lerp to targets)
+            const { x, y, targetX, targetY, linearIndex } = State.blockData;
             for (let i = 0; i < State.blockCount; i++) {
+                // Y animation (all blocks)
                 y[i] += (targetY[i] - y[i]) * 0.15;
+
+                // X animation (only for linearized blocks)
+                if (linearIndex[i] >= 0) {
+                    x[i] += (targetX[i] - x[i]) * 0.1;
+                }
             }
 
             // Clear previous frame (reuse same objects)
@@ -516,7 +526,7 @@
 
             if (State.blockCount === 0) return;
 
-            const { x, size, isBlue, parentHashes } = State.blockData;
+            const { size, isBlue, parentHashes } = State.blockData;
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
@@ -915,6 +925,121 @@
             }
         }
 
+        // ============================================================
+        // Linearization Algorithm (DAGknight/GHOSTDAG compliant)
+        // ============================================================
+
+        // Compute Past(block) - all ancestors of a block
+        function computePast(hash, maxDepth = 100) {
+            const past = new Set();
+            const queue = [hash];
+            let depth = 0;
+
+            while (queue.length > 0 && depth < maxDepth) {
+                const current = queue.shift();
+                const idx = State.blockHashToIndex.get(current);
+                if (idx === undefined) continue;
+
+                const parents = State.blockData.parentHashes[idx] || [];
+                for (const p of parents) {
+                    if (!past.has(p)) {
+                        past.add(p);
+                        queue.push(p);
+                    }
+                }
+                depth++;
+            }
+
+            return past;
+        }
+
+        // Compute Mergeset: Past(block) - Past(prevChainBlock)
+        function computeMergeset(chainBlock, prevChainBlock) {
+            const currentPast = computePast(chainBlock, 50);
+            const prevPast = prevChainBlock ? computePast(prevChainBlock, 50) : new Set();
+
+            // Mergeset = currentPast - prevPast (excluding chainBlock itself)
+            const mergeset = [];
+            for (const hash of currentPast) {
+                if (!prevPast.has(hash) && hash !== chainBlock) {
+                    mergeset.push(hash);
+                }
+            }
+
+            return mergeset;
+        }
+
+        // Sort blocks by blue_work ascending, then hash ascending (tiebreaker)
+        function sortByBlueWork(hashes) {
+            return hashes.sort((a, b) => {
+                const idxA = State.blockHashToIndex.get(a);
+                const idxB = State.blockHashToIndex.get(b);
+                if (idxA === undefined || idxB === undefined) return 0;
+
+                // Get blueWork as BigInt
+                const workStrA = State.blockData.blueWork[idxA] || '0';
+                const workStrB = State.blockData.blueWork[idxB] || '0';
+
+                try {
+                    const workA = BigInt('0x' + workStrA.replace(/^0x/, ''));
+                    const workB = BigInt('0x' + workStrB.replace(/^0x/, ''));
+
+                    // Ascending order (lower blue_work first)
+                    if (workA < workB) return -1;
+                    if (workA > workB) return 1;
+                } catch (e) {
+                    // Fallback: string comparison
+                    if (workStrA < workStrB) return -1;
+                    if (workStrA > workStrB) return 1;
+                }
+
+                // Tiebreaker: hash ascending
+                if (a < b) return -1;
+                if (a > b) return 1;
+
+                return 0;
+            });
+        }
+
+        // Build complete linear order from Selected Chain
+        // Order: S0 → mergeset(S1) → S1 → mergeset(S2) → S2 → ...
+        function buildLinearOrder(selectedChain) {
+            if (selectedChain.length === 0) return [];
+
+            const linearOrder = [];
+            const addedToOrder = new Set();
+
+            // Reverse chain to go from oldest to newest
+            const chainOldestFirst = [...selectedChain].reverse();
+
+            for (let i = 0; i < chainOldestFirst.length; i++) {
+                const chainBlock = chainOldestFirst[i];
+                const prevChainBlock = i > 0 ? chainOldestFirst[i - 1] : null;
+
+                // Compute mergeset for this chain block
+                const mergeset = computeMergeset(chainBlock, prevChainBlock);
+
+                // Sort mergeset by blue_work ascending
+                const sortedMergeset = sortByBlueWork(mergeset);
+
+                // Add mergeset blocks (skip if already added)
+                for (const hash of sortedMergeset) {
+                    if (!addedToOrder.has(hash)) {
+                        addedToOrder.add(hash);
+                        linearOrder.push(hash);
+                    }
+                }
+
+                // Add chain block itself
+                if (!addedToOrder.has(chainBlock)) {
+                    addedToOrder.add(chainBlock);
+                    linearOrder.push(chainBlock);
+                }
+            }
+
+            return linearOrder;
+        }
+
         // Step 2.9: Run DAGknight calculation and update block positions
         function runDAGknightCalculation() {
             if (State.blockCount < 2) return;
@@ -942,27 +1067,60 @@
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
+
+                // Build Selected Chain list (for linearization)
+                // Extract chain from edges (newest to oldest)
+                const chainList = [];
+                const chainSet = new Set();
+                for (const [from, to] of edges) {
+                    if (!chainSet.has(from)) {
+                        chainSet.add(from);
+                        chainList.push(from);
+                    }
+                    if (!chainSet.has(to)) {
+                        chainSet.add(to);
+                        chainList.push(to);
+                    }
+                }
+
+                // Build linear order (DAGknight compliant)
+                const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
                 State.selectedChainEdges = edges;
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
+                State.linearOrder = linearOrder;
+
                 State.debug = {
                     tips: tips.length,
                     chainLen: chainBlocks.size,
-                    orderedLen: orderedBlocks.size,
-                    edgeCount: edges.length,
+                    linearLen: linearOrder.length,
                     calcTime: calcTime.toFixed(1),
                 };
 
-                // Mark ordered blocks: set targetY = 0 (they will animate to center)
-                // This includes chain blocks AND their ancestors (topologically ordered)
+                // Assign linearIndex and targetX to linearized blocks
+                const linearSet = new Set(linearOrder);
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
-                    if (orderedBlocks.has(hash)) {
-                        State.blockData.targetY[i] = 0;  // Ordered blocks go to Y=0
+                    const linearIdx = linearOrder.indexOf(hash);
+
+                    if (linearIdx !== -1) {
+                        // Block is linearized
+                        State.blockData.linearIndex[i] = linearIdx;
+                        State.blockData.targetX[i] = linearIdx * CONFIG.LINEAR_PITCH;
+                        State.blockData.targetY[i] = 0;
                         State.blockData.isBlue[i] = 1;
+                    } else {
+                        // Block not yet linearized (keep at DAA position)
+                        State.blockData.linearIndex[i] = -1;
                     }
+                }
+
+                // Update viewport to follow the linearized chain
+                if (linearOrder.length > 0) {
+                    const maxLinearX = (linearOrder.length - 1) * CONFIG.LINEAR_PITCH;
+                    State.viewport.targetX = maxLinearX - State.viewport.width * 0.7;
                 }
             } catch (error) {
                 State.debug = { error: error.message };
@@ -1009,6 +1167,10 @@
             const randomY = (Math.random() - 0.5) * 400;
             State.blockData.y[index] = randomY;
             State.blockData.targetY[index] = randomY;  // Same as y initially
+
+            // X target = same as X initially (will be updated by linearization)
+            State.blockData.targetX[index] = State.blockData.x[index];
+            State.blockData.linearIndex[index] = -1;  // Not linearized yet
 
             // Store blueScore and blueWork for DAGknight calculation
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
@@ -1151,7 +1313,7 @@
                 if (State.debug.error) {
                     debugText = `ERR: ${State.debug.error}`;
                 } else {
-                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Ord:${State.debug.orderedLen} T:${State.debug.calcTime}ms`;
+                    debugText = `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Lin:${State.debug.linearLen} T:${State.debug.calcTime}ms`;
                 }
                 // Add Y range info
                 let minY = Infinity, maxY = -Infinity;
