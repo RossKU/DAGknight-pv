@@ -274,8 +274,6 @@
             <button id="btn-zoom-out">-</button>
         </div>
 
-        <div id="debug" style="position:absolute; bottom:60px; left:16px; right:16px; max-height:200px; overflow-y:auto; background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace; font-size:11px; padding:8px; border-radius:4px; z-index:200; white-space:pre-wrap;"></div>
-
         <div id="loading">
             <div class="spinner"></div>
             <div class="text">Initializing...</div>
@@ -560,30 +558,8 @@
         // ------------------------------------------------------------
         // Block Management
         // ------------------------------------------------------------
-        // Debug log function
-        const debugEl = document.getElementById('debug');
-        let debugCount = 0;
-        function debugLog(msg) {
-            debugCount++;
-            if (debugCount > 50) {
-                debugEl.textContent = ''; // Clear old logs
-                debugCount = 1;
-            }
-            debugEl.textContent += msg + '\n';
-            debugEl.scrollTop = debugEl.scrollHeight;
-        }
-
         function addBlock(blockInfo) {
             const index = State.ringHead;
-
-            // DEBUG: Log block structure (first 5 blocks only)
-            if (State.blockCount < 5) {
-                debugLog(`--- Block ${State.blockCount} ---`);
-                debugLog(`hash: ${blockInfo.header?.hash?.slice(0, 16)}...`);
-                debugLog(`parentsByLevel type: ${typeof blockInfo.header?.parentsByLevel}`);
-                debugLog(`parentsByLevel isArray: ${Array.isArray(blockInfo.header?.parentsByLevel)}`);
-                debugLog(`parentsByLevel: ${JSON.stringify(blockInfo.header?.parentsByLevel)?.slice(0, 300)}`);
-            }
 
             // Store hash (WASM SDK uses header.hash, not block.hash)
             const hash = blockInfo.header.hash;
@@ -602,16 +578,10 @@
             State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
             // Store parent hashes (resolved dynamically in renderDAG)
-            // WASM SDK uses parentsByLevel instead of parents
+            // WASM SDK uses parentsByLevel - only use level 0 (direct parents)
             const parentsByLevel = blockInfo.header.parentsByLevel || [];
-            const parents = parentsByLevel.flatMap(level => level || []);
+            const parents = parentsByLevel[0] || [];
             State.blockData.parentHashes[index] = parents;
-
-            // DEBUG: Log parent extraction result
-            if (State.blockCount < 5) {
-                debugLog(`extracted parents: ${parents.length} hashes`);
-                debugLog(`first parent: ${parents[0]?.slice(0, 16)}...`);
-            }
 
             // Update ring buffer
             State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
