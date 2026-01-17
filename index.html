@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v6e66746',
+            VERSION: 'v7-perf',
 
             // Display
             MAX_BLOCKS: 1000,
@@ -560,18 +560,22 @@
                     continue;
                 }
 
-                // Draw edges to parents (dynamically resolved)
-                const parents = parentHashes[i] || [];
-                for (const parentHash of parents) {
-                    if (edgeCount >= CONFIG.MAX_EDGES) break;
-                    const parentIdx = State.blockHashToIndex.get(parentHash);
-                    if (parentIdx !== undefined) {
-                        const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
-                        const parentScreenY = (y[parentIdx] - vpY) * zoom + halfHeight;
+                // Draw edges to parents (skip if block is linearized/converged to Y=0)
+                // This significantly reduces edge count and improves performance
+                const { linearIndex } = State.blockData;
+                if (linearIndex[i] < 0) {  // Only draw edges from non-linearized blocks (tips)
+                    const parents = parentHashes[i] || [];
+                    for (const parentHash of parents) {
+                        if (edgeCount >= CONFIG.MAX_EDGES) break;
+                        const parentIdx = State.blockHashToIndex.get(parentHash);
+                        if (parentIdx !== undefined) {
+                            const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
+                            const parentScreenY = (y[parentIdx] - vpY) * zoom + halfHeight;
 
-                        edges.moveTo(screenX, screenY);
-                        edges.lineTo(parentScreenX, parentScreenY);
-                        edgeCount++;
+                            edges.moveTo(screenX, screenY);
+                            edges.lineTo(parentScreenX, parentScreenY);
+                            edgeCount++;
+                        }
                     }
                 }
             }
@@ -1121,9 +1125,15 @@
                 const maxLinearIdx = linearOrder.length - 1;
                 const SPAWN_X = CONFIG.SPAWN_X;
 
+                // Build hash→index map for O(1) lookup (fixes O(n²) indexOf issue)
+                const linearOrderMap = new Map();
+                for (let idx = 0; idx < linearOrder.length; idx++) {
+                    linearOrderMap.set(linearOrder[idx], idx);
+                }
+
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
-                    const linearIdx = linearOrder.indexOf(hash);
+                    const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
 
                     if (linearIdx !== -1) {
                         // Block is linearized - right aligned from SPAWN_X
