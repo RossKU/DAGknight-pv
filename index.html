@@ -579,12 +579,10 @@
             // DEBUG: Log block structure (first 5 blocks only)
             if (State.blockCount < 5) {
                 debugLog(`--- Block ${State.blockCount} ---`);
-                debugLog(`blockInfo keys: ${Object.keys(blockInfo).join(', ')}`);
-                debugLog(`header keys: ${Object.keys(blockInfo.header || {}).join(', ')}`);
-                debugLog(`hash: ${blockInfo.header?.hash}`);
-                debugLog(`parents type: ${typeof blockInfo.header?.parents}`);
-                debugLog(`parents isArray: ${Array.isArray(blockInfo.header?.parents)}`);
-                debugLog(`parents: ${JSON.stringify(blockInfo.header?.parents)?.slice(0, 200)}`);
+                debugLog(`hash: ${blockInfo.header?.hash?.slice(0, 16)}...`);
+                debugLog(`parentsByLevel type: ${typeof blockInfo.header?.parentsByLevel}`);
+                debugLog(`parentsByLevel isArray: ${Array.isArray(blockInfo.header?.parentsByLevel)}`);
+                debugLog(`parentsByLevel: ${JSON.stringify(blockInfo.header?.parentsByLevel)?.slice(0, 300)}`);
             }
 
             // Store hash (WASM SDK uses header.hash, not block.hash)
@@ -604,13 +602,15 @@
             State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
             // Store parent hashes (resolved dynamically in renderDAG)
-            const parents = blockInfo.header.parents?.flatMap(p => p.parentHashes) || [];
+            // WASM SDK uses parentsByLevel instead of parents
+            const parentsByLevel = blockInfo.header.parentsByLevel || [];
+            const parents = parentsByLevel.flatMap(level => level || []);
             State.blockData.parentHashes[index] = parents;
 
             // DEBUG: Log parent extraction result
             if (State.blockCount < 5) {
-                debugLog(`extracted parents: ${JSON.stringify(parents)?.slice(0, 200)}`);
-                debugLog(`parents length: ${parents.length}`);
+                debugLog(`extracted parents: ${parents.length} hashes`);
+                debugLog(`first parent: ${parents[0]?.slice(0, 16)}...`);
             }
 
             // Update ring buffer
