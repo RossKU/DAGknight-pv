@@ -350,10 +350,14 @@
             ringHead: 0,
             ringTail: 0,
 
+            // DAA score reference for relative X coordinates
+            minDaaScore: null,
+
             // Viewport
             viewport: {
                 x: 0,
                 y: 0,
+                targetX: 0,  // For smooth scrolling
                 zoom: 1,
                 width: 0,
                 height: 0,
@@ -472,6 +476,9 @@
         function renderDAG() {
             const { edges, blueBlocks, redBlocks, vspc } = State.graphics;
 
+            // Smooth viewport scrolling (lerp interpolation)
+            State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
+
             // Clear previous frame (reuse same objects)
             edges.clear();
             blueBlocks.clear();
@@ -566,10 +573,17 @@
             State.blockData.hashes[index] = hash;
             State.blockHashToIndex.set(hash, index);
 
-            // Calculate position
+            // Calculate position using relative coordinates (avoids Float32 precision issues)
             const daaScore = Number(blockInfo.header.daaScore);
             State.blockData.daaScore[index] = daaScore;
-            State.blockData.x[index] = daaScore * 2; // X based on DAA score
+
+            // Set reference point on first block
+            if (State.minDaaScore === null) {
+                State.minDaaScore = daaScore;
+            }
+
+            // X = relative DAA score * scale (50px per DAA score increment)
+            State.blockData.x[index] = (daaScore - State.minDaaScore) * 50;
             State.blockData.y[index] = (Math.random() - 0.5) * 400; // Random Y for now
 
             // Color (default blue, will be updated by DAGknight calculation)
@@ -594,9 +608,9 @@
                 State.ringTail = (State.ringTail + 1) % CONFIG.MAX_BLOCKS;
             }
 
-            // Update viewport to follow latest blocks
+            // Update viewport target (smooth scrolling happens in render loop)
             const latestX = State.blockData.x[index];
-            State.viewport.x = latestX - State.viewport.width / 3;
+            State.viewport.targetX = latestX - State.viewport.width / 3;
 
             // Update UI
             DOM.blockCount.textContent = State.blockCount.toLocaleString();
