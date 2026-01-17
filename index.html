@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v8-edge',
+            VERSION: 'v9-multipath',
 
             // Display
             MAX_BLOCKS: 1000,
@@ -1100,15 +1100,10 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Build Selected Chain edges from chainList (single chain, dkoder compliant)
-                // Only edges from the linearization chain, not from all tips
-                const singleChainEdges = [];
-                for (let i = 0; i < chainList.length - 1; i++) {
-                    singleChainEdges.push([chainList[i], chainList[i + 1]]);
-                }
-
-                State.selectedChainEdges = singleChainEdges;
-                State.selectedChainBlocks = new Set(chainList);
+                // Use edges from buildSelectedChains for DRAWING (multiple paths from all tips)
+                // This shows paths from ALL tips converging to common ancestor
+                State.selectedChainEdges = edges;
+                State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
