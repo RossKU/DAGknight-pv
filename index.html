@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v31-both-endpoints',
+            VERSION: 'v32-lcca-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -756,34 +756,32 @@
             if (hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
 
-            // Build ancestor sets for each hash (BFS)
-            const ancestorSets = hashes.map(hash => {
-                const ancestors = new Set([hash]);
-                const queue = [hash];
-                let depth = 0;
-                while (queue.length > 0 && depth < 50) {
-                    const current = queue.shift();
+            // Build Selected Parent Chain for each hash (dkoder compliant)
+            // Follow ONLY the selected parent (highest blue_work) at each step
+            const chains = hashes.map(hash => {
+                const chain = new Set([hash]);
+                let current = hash;
+                for (let depth = 0; depth < 100; depth++) {
                     const idx = State.blockHashToIndex.get(current);
-                    if (idx === undefined) continue;
+                    if (idx === undefined) break;
                     const parents = State.blockData.parentHashes[idx] || [];
-                    for (const p of parents) {
-                        if (!ancestors.has(p)) {
-                            ancestors.add(p);
-                            queue.push(p);
-                        }
-                    }
-                    depth++;
+                    if (parents.length === 0) break;
+                    // Select parent with highest blue_work (dkoder's selected parent)
+                    const selectedParent = selectBestFromGroup(parents);
+                    if (!selectedParent || chain.has(selectedParent)) break;
+                    chain.add(selectedParent);
+                    current = selectedParent;
                 }
-                return ancestors;
+                return chain;
             });
 
-            // Find common ancestors (intersection)
-            let common = ancestorSets[0];
-            for (let i = 1; i < ancestorSets.length; i++) {
-                common = new Set([...common].filter(x => ancestorSets[i].has(x)));
+            // Find common blocks across all Selected Parent Chains
+            let common = chains[0];
+            for (let i = 1; i < chains.length; i++) {
+                common = new Set([...common].filter(x => chains[i].has(x)));
             }
 
-            // Return the one with highest DAA score (latest)
+            // Return the one with highest DAA score (latest = LCCA)
             let lcca = null;
             let maxDaa = -1;
             for (const hash of common) {
