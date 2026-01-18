@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v25-lcca-sync',
+            VERSION: 'v27-separate-edges',
 
             // Display
             MAX_BLOCKS: 500,
@@ -388,12 +388,12 @@
             },
 
             // Selected Chain (Selected Parent Chain)
-            selectedChainEdges: [],    // [[fromHash, toHash], ...]
+            selectedChainEdges: [],    // [[fromHash, toHash], ...] - Tips→LCCA (green)
+            finalizedChainEdges: [],   // [[fromHash, toHash], ...] - LCCA→older (blue)
             selectedChainBlocks: new Set(),  // Blocks on selected chain
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
-            boundaryLccaX: null,  // Minimum LCCA X for blue/green boundary (synced with edge accumulation)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -648,57 +648,43 @@
                 }
             }
 
-            // Draw Selected Chain edges
-            // Green = at or right of LCCA (active)
-            // Blue = left of LCCA (finalized)
-            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
-                let activeDrawn = false;
+            // Draw Finalized Chain edges (blue) - LCCA→older
+            if (State.finalizedChainEdges && State.finalizedChainEdges.length > 0) {
                 let finalizedDrawn = false;
-
-                // Get boundary LCCA X position (minimum across accumulated edges)
-                // This ensures edges stay green until truly past all active LCCAs
-                const lccaX = State.boundaryLccaX !== null ? State.boundaryLccaX : -Infinity;
-
-                // First pass: finalized edges (blue) - leftmost endpoint is LEFT of LCCA
-                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                for (const [fromHash, toHash] of State.finalizedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const leftmostX = Math.min(x[idx1], x[idx2]);
-                        const isFinalized = leftmostX < lccaX;
-                        if (isFinalized) {
-                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                            vspc.moveTo(screenX1, screenY1);
-                            vspc.lineTo(screenX2, screenY2);
-                            finalizedDrawn = true;
-                        }
+                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                        vspc.moveTo(screenX1, screenY1);
+                        vspc.lineTo(screenX2, screenY2);
+                        finalizedDrawn = true;
                     }
                 }
                 if (finalizedDrawn) {
                     vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
                 }
+            }
 
-                // Second pass: active edges (green) - leftmost endpoint at or right of LCCA
+            // Draw Selected Chain edges (green) - Tips→LCCA
+            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                let activeDrawn = false;
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const leftmostX = Math.min(x[idx1], x[idx2]);
-                        const isFinalized = leftmostX < lccaX;
-                        if (!isFinalized) {
-                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                            vspc.moveTo(screenX1, screenY1);
-                            vspc.lineTo(screenX2, screenY2);
-                            activeDrawn = true;
-                        }
+                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                        vspc.moveTo(screenX1, screenY1);
+                        vspc.lineTo(screenX2, screenY2);
+                        activeDrawn = true;
                     }
                 }
                 if (activeDrawn) {
@@ -942,7 +928,7 @@
         // Step 2.8: Build Selected Chains from each Tip
         // Returns array of edges: [[from, to], [from, to], ...]
         // Also collects all ancestors (for topological ordering / Y=0 convergence)
-        function buildSelectedChains(tipHashes, maxDepth = 50) {
+        function buildSelectedChains(tipHashes, lccaHash = null, maxDepth = 50) {
             const edges = [];           // [fromHash, toHash] pairs for selected chain
             const visited = new Set();  // Avoid duplicate edges after merge
             const chainBlocks = new Set(); // Blocks on selected chain
@@ -958,6 +944,11 @@
 
                     chainBlocks.add(currentHash);
                     orderedBlocks.add(currentHash);
+
+                    // Stop at LCCA (don't create edges past LCCA)
+                    if (lccaHash && currentHash === lccaHash) {
+                        break;
+                    }
 
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
@@ -1193,11 +1184,13 @@
 
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
-                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
 
-                // Find LCCA (convergence point where all tip paths meet)
+                // Find LCCA first (convergence point where all tip paths meet)
                 const lccaHash = findLCCA(tips.slice(0, 10));
                 State.lccaHash = lccaHash;
+
+                // Build Selected Chains - stop at LCCA (green edges: Tips→LCCA)
+                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10), lccaHash);
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
@@ -1219,6 +1212,17 @@
                     currentChainBlock = selectParent(parents);
                 }
                 // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
+
+                // Build finalized chain edges (blue edges: LCCA→older)
+                // Find LCCA position in chainList and create edges from there onwards
+                const finalizedEdges = [];
+                const lccaIndex = chainList.indexOf(lccaHash);
+                if (lccaIndex !== -1 && lccaIndex < chainList.length - 1) {
+                    for (let i = lccaIndex; i < chainList.length - 1; i++) {
+                        finalizedEdges.push([chainList[i], chainList[i + 1]]);
+                    }
+                }
+                State.finalizedChainEdges = finalizedEdges;
 
                 // Build linear order (DAGknight compliant)
                 const linearOrder = buildLinearOrder(chainList);
@@ -1264,24 +1268,6 @@
                 }
 
                 State.selectedChainEdges = mergedEdges;
-
-                // Update boundaryLccaX (minimum LCCA X for blue/green boundary)
-                // Synced with edge accumulation: keeps minimum while old edges exist
-                const lccaIdx = State.blockHashToIndex.get(lccaHash);
-                const currentLccaX = lccaIdx !== undefined ? State.blockData.x[lccaIdx] : null;
-
-                if (currentLccaX !== null) {
-                    if (survivingOldEdges.length === 0) {
-                        // No old edges - reset to current LCCA X
-                        State.boundaryLccaX = currentLccaX;
-                    } else {
-                        // Old edges exist - keep minimum (leftmost) LCCA X
-                        State.boundaryLccaX = State.boundaryLccaX !== null
-                            ? Math.min(State.boundaryLccaX, currentLccaX)
-                            : currentLccaX;
-                    }
-                }
-
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
