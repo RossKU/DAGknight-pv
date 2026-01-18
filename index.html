@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v19-noYcheck',
+            VERSION: 'v23-lccaX-blue',
 
             // Display
             MAX_BLOCKS: 500,
@@ -647,26 +647,63 @@
                 }
             }
 
-            // Draw Selected Chain edges (from each Tip, merging at LCCA)
-            // NO Y check - show edges even at Y=0 (the winning paths from all tips)
+            // Draw Selected Chain edges
+            // Green = at or right of LCCA (active)
+            // Blue = left of LCCA (finalized)
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
-                let chainDrawn = false;
+                let activeDrawn = false;
+                let finalizedDrawn = false;
+
+                // Get LCCA's X position for comparison
+                let lccaX = -Infinity;
+                if (State.lccaHash) {
+                    const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
+                    if (lccaIdx !== undefined) {
+                        lccaX = x[lccaIdx];
+                    }
+                }
+
+                // First pass: finalized edges (blue) - both endpoints LEFT of LCCA
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-
-                        vspc.moveTo(screenX1, screenY1);
-                        vspc.lineTo(screenX2, screenY2);
-                        chainDrawn = true;
+                        const isFinalized = x[idx1] < lccaX && x[idx2] < lccaX;
+                        if (isFinalized) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            vspc.moveTo(screenX1, screenY1);
+                            vspc.lineTo(screenX2, screenY2);
+                            finalizedDrawn = true;
+                        }
                     }
                 }
-                if (chainDrawn) {
+                if (finalizedDrawn) {
+                    vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
+                }
+
+                // Second pass: active edges (green) - at least one endpoint at or right of LCCA
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
+
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const isFinalized = x[idx1] < lccaX && x[idx2] < lccaX;
+                        if (!isFinalized) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            vspc.moveTo(screenX1, screenY1);
+                            vspc.lineTo(screenX2, screenY2);
+                            activeDrawn = true;
+                        }
+                    }
+                }
+                if (activeDrawn) {
                     vspc.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
                 }
             }
