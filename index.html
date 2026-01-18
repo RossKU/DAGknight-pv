@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v28-filter-edges',
+            VERSION: 'v29-targetX-classify',
 
             // Display
             MAX_BLOCKS: 500,
@@ -388,8 +388,7 @@
             },
 
             // Selected Chain (Selected Parent Chain)
-            selectedChainEdges: [],    // [[fromHash, toHash], ...] - Tips→LCCA (green)
-            finalizedChainEdges: [],   // [[fromHash, toHash], ...] - LCCA→older (blue)
+            selectedChainEdges: [],    // [[fromHash, toHash], ...] - all edges, classified at render time
             selectedChainBlocks: new Set(),  // Blocks on selected chain (for large block rendering)
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
@@ -648,43 +647,62 @@
                 }
             }
 
-            // Draw Finalized Chain edges (blue) - LCCA→older
-            if (State.finalizedChainEdges && State.finalizedChainEdges.length > 0) {
-                let blueDrawn = false;
-                for (const [fromHash, toHash] of State.finalizedChainEdges) {
-                    const idx1 = State.blockHashToIndex.get(fromHash);
-                    const idx2 = State.blockHashToIndex.get(toHash);
+            // Draw Selected Chain edges - classify at render time using targetX
+            // Blue = leftmost endpoint's targetX < LCCA's targetX (finalized)
+            // Green = leftmost endpoint's targetX >= LCCA's targetX (active)
+            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                const { targetX } = State.blockData;
 
-                    if (idx1 !== undefined && idx2 !== undefined) {
-                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                        vspc.moveTo(screenX1, screenY1);
-                        vspc.lineTo(screenX2, screenY2);
-                        blueDrawn = true;
+                // Get LCCA's targetX for comparison (stable, not animated)
+                let lccaTargetX = -Infinity;
+                if (State.lccaHash) {
+                    const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
+                    if (lccaIdx !== undefined) {
+                        lccaTargetX = targetX[lccaIdx];
                     }
                 }
-                if (blueDrawn) {
-                    vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
-                }
-            }
 
-            // Draw Selected Chain edges (green) - Tips→LCCA
-            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                let blueDrawn = false;
                 let greenDrawn = false;
+
+                // First pass: blue edges (leftmost targetX < lccaTargetX)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                        vspc.moveTo(screenX1, screenY1);
-                        vspc.lineTo(screenX2, screenY2);
-                        greenDrawn = true;
+                        const leftmostTargetX = Math.min(targetX[idx1], targetX[idx2]);
+                        if (leftmostTargetX < lccaTargetX) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            vspc.moveTo(screenX1, screenY1);
+                            vspc.lineTo(screenX2, screenY2);
+                            blueDrawn = true;
+                        }
+                    }
+                }
+                if (blueDrawn) {
+                    vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
+                }
+
+                // Second pass: green edges (leftmost targetX >= lccaTargetX)
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
+
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const leftmostTargetX = Math.min(targetX[idx1], targetX[idx2]);
+                        if (leftmostTargetX >= lccaTargetX) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            vspc.moveTo(screenX1, screenY1);
+                            vspc.lineTo(screenX2, screenY2);
+                            greenDrawn = true;
+                        }
                     }
                 }
                 if (greenDrawn) {
@@ -1210,31 +1228,8 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Create a Set of blocks at or right of LCCA (for filtering edges)
-                // chainList: [bestTip(0), ..., LCCA(lccaIdx), ..., oldest]
-                // Blocks with index <= lccaIdx are "at or right of LCCA"
-                const lccaIndex = chainList.indexOf(lccaHash);
-                const blocksAtOrRightOfLCCA = new Set();
-                if (lccaIndex !== -1) {
-                    for (let i = 0; i <= lccaIndex; i++) {
-                        blocksAtOrRightOfLCCA.add(chainList[i]);
-                    }
-                }
-                // Also add LCCA itself to ensure it's included
-                if (lccaHash) blocksAtOrRightOfLCCA.add(lccaHash);
-
-                // Filter edges: only include edges where at least one endpoint is at/right of LCCA
-                const greenEdges = [];
-                for (const [from, to] of edges) {
-                    const fromAtRight = blocksAtOrRightOfLCCA.has(from);
-                    const toAtRight = blocksAtOrRightOfLCCA.has(to);
-                    // Include if at least one endpoint is at or right of LCCA
-                    if (fromAtRight || toAtRight) {
-                        greenEdges.push([from, to]);
-                    }
-                }
-
-                // Accumulate green edges (keep until blocks are deleted)
+                // Accumulate ALL edges (keep until blocks are deleted)
+                // Classification (green/blue) happens at render time using targetX
                 const survivingOldEdges = [];
                 if (State.selectedChainEdges) {
                     for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -1246,7 +1241,7 @@
                     }
                 }
 
-                // Merge: old surviving edges + new green edges (deduplicated)
+                // Merge: old surviving edges + new edges (deduplicated)
                 const edgeSet = new Set();
                 const mergedEdges = [];
 
@@ -1258,7 +1253,7 @@
                     }
                 }
 
-                for (const edge of greenEdges) {
+                for (const edge of edges) {
                     const key = `${edge[0]}->${edge[1]}`;
                     if (!edgeSet.has(key)) {
                         edgeSet.add(key);
@@ -1267,15 +1262,6 @@
                 }
 
                 State.selectedChainEdges = mergedEdges;
-
-                // Create blue edges: LCCA→older (from chainList)
-                const blueEdges = [];
-                if (lccaIndex !== -1 && lccaIndex < chainList.length - 1) {
-                    for (let i = lccaIndex; i < chainList.length - 1; i++) {
-                        blueEdges.push([chainList[i], chainList[i + 1]]);
-                    }
-                }
-                State.finalizedChainEdges = blueEdges;
 
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
