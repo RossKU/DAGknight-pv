@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v24-leftmost-fix',
+            VERSION: 'v25-lcca-sync',
 
             // Display
             MAX_BLOCKS: 500,
@@ -393,6 +393,7 @@
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
+            boundaryLccaX: null,  // Minimum LCCA X for blue/green boundary (synced with edge accumulation)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -654,14 +655,9 @@
                 let activeDrawn = false;
                 let finalizedDrawn = false;
 
-                // Get LCCA's X position for comparison
-                let lccaX = -Infinity;
-                if (State.lccaHash) {
-                    const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
-                    if (lccaIdx !== undefined) {
-                        lccaX = x[lccaIdx];
-                    }
-                }
+                // Get boundary LCCA X position (minimum across accumulated edges)
+                // This ensures edges stay green until truly past all active LCCAs
+                const lccaX = State.boundaryLccaX !== null ? State.boundaryLccaX : -Infinity;
 
                 // First pass: finalized edges (blue) - leftmost endpoint is LEFT of LCCA
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -1268,6 +1264,24 @@
                 }
 
                 State.selectedChainEdges = mergedEdges;
+
+                // Update boundaryLccaX (minimum LCCA X for blue/green boundary)
+                // Synced with edge accumulation: keeps minimum while old edges exist
+                const lccaIdx = State.blockHashToIndex.get(lccaHash);
+                const currentLccaX = lccaIdx !== undefined ? State.blockData.x[lccaIdx] : null;
+
+                if (currentLccaX !== null) {
+                    if (survivingOldEdges.length === 0) {
+                        // No old edges - reset to current LCCA X
+                        State.boundaryLccaX = currentLccaX;
+                    } else {
+                        // Old edges exist - keep minimum (leftmost) LCCA X
+                        State.boundaryLccaX = State.boundaryLccaX !== null
+                            ? Math.min(State.boundaryLccaX, currentLccaX)
+                            : currentLccaX;
+                    }
+                }
+
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
