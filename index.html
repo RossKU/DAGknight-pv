@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v25-lcca-sync',
+            VERSION: 'v26-stop-at-lcca',
 
             // Display
             MAX_BLOCKS: 500,
@@ -942,7 +942,7 @@
         // Step 2.8: Build Selected Chains from each Tip
         // Returns array of edges: [[from, to], [from, to], ...]
         // Also collects all ancestors (for topological ordering / Y=0 convergence)
-        function buildSelectedChains(tipHashes, maxDepth = 50) {
+        function buildSelectedChains(tipHashes, lccaHash = null, maxDepth = 50) {
             const edges = [];           // [fromHash, toHash] pairs for selected chain
             const visited = new Set();  // Avoid duplicate edges after merge
             const chainBlocks = new Set(); // Blocks on selected chain
@@ -958,6 +958,11 @@
 
                     chainBlocks.add(currentHash);
                     orderedBlocks.add(currentHash);
+
+                    // Stop at LCCA (don't create edges past LCCA)
+                    if (lccaHash && currentHash === lccaHash) {
+                        break;
+                    }
 
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
@@ -1193,11 +1198,13 @@
 
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
-                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
 
-                // Find LCCA (convergence point where all tip paths meet)
+                // Find LCCA first (convergence point where all tip paths meet)
                 const lccaHash = findLCCA(tips.slice(0, 10));
                 State.lccaHash = lccaHash;
+
+                // Build Selected Chains - stop at LCCA (don't create edges past LCCA)
+                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10), lccaHash);
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
