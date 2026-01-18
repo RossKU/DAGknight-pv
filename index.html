@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v23-lccaX-blue',
+            VERSION: 'v24-leftmost-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -663,13 +663,14 @@
                     }
                 }
 
-                // First pass: finalized edges (blue) - both endpoints LEFT of LCCA
+                // First pass: finalized edges (blue) - leftmost endpoint is LEFT of LCCA
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const isFinalized = x[idx1] < lccaX && x[idx2] < lccaX;
+                        const leftmostX = Math.min(x[idx1], x[idx2]);
+                        const isFinalized = leftmostX < lccaX;
                         if (isFinalized) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
@@ -685,13 +686,14 @@
                     vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
                 }
 
-                // Second pass: active edges (green) - at least one endpoint at or right of LCCA
+                // Second pass: active edges (green) - leftmost endpoint at or right of LCCA
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const isFinalized = x[idx1] < lccaX && x[idx2] < lccaX;
+                        const leftmostX = Math.min(x[idx1], x[idx2]);
+                        const isFinalized = leftmostX < lccaX;
                         if (!isFinalized) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
