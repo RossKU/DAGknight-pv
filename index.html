@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v15-chainblue',
+            VERSION: 'v18-mainchain-noYcheck',
 
             // Display
             MAX_BLOCKS: 500,
@@ -647,8 +647,8 @@
                 }
             }
 
-            // Draw Selected Chain edges (from each Tip, merging at LCCA)
-            // Skip edges where both endpoints have converged to Y≈0
+            // Draw Selected Chain edges (main chain from bestTip to LCCA)
+            // NO Y check - show entire chain including Y=0 portions (the "winning" path)
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 let chainDrawn = false;
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -656,11 +656,6 @@
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        // Skip if both endpoints have converged to Y=0
-                        if (Math.abs(y[idx1]) <= 5 && Math.abs(y[idx2]) <= 5) {
-                            continue;
-                        }
-
                         const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                         const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                         const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
@@ -1194,50 +1189,15 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Accumulate Selected Chain edges (don't remove until both endpoints reach Y=0)
-                // This ensures edges stay visible during the animation
-                const { y } = State.blockData;
-
-                // Keep old edges where at least one endpoint hasn't converged to Y=0
-                const survivingOldEdges = [];
-                if (State.selectedChainEdges) {
-                    for (const [fromHash, toHash] of State.selectedChainEdges) {
-                        const idx1 = State.blockHashToIndex.get(fromHash);
-                        const idx2 = State.blockHashToIndex.get(toHash);
-
-                        // Keep edge if both blocks still exist and at least one hasn't converged
-                        if (idx1 !== undefined && idx2 !== undefined) {
-                            if (Math.abs(y[idx1]) > 5 || Math.abs(y[idx2]) > 5) {
-                                survivingOldEdges.push([fromHash, toHash]);
-                            }
-                        }
-                    }
+                // Build Selected Chain edges from chainList only (single main chain)
+                // This shows the winning chain from bestTip to LCCA and beyond
+                const mainChainEdges = [];
+                for (let i = 0; i < chainList.length - 1; i++) {
+                    mainChainEdges.push([chainList[i], chainList[i + 1]]);
                 }
 
-                // Merge: old surviving edges + new edges (deduplicated)
-                const edgeSet = new Set();
-                const mergedEdges = [];
-
-                // Add surviving old edges first
-                for (const edge of survivingOldEdges) {
-                    const key = `${edge[0]}->${edge[1]}`;
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        mergedEdges.push(edge);
-                    }
-                }
-
-                // Add new edges
-                for (const edge of edges) {
-                    const key = `${edge[0]}->${edge[1]}`;
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        mergedEdges.push(edge);
-                    }
-                }
-
-                State.selectedChainEdges = mergedEdges;
-                State.selectedChainBlocks = chainBlocks;
+                State.selectedChainEdges = mainChainEdges;
+                State.selectedChainBlocks = new Set(chainList);
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
