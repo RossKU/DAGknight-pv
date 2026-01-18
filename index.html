@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v15-chainblue',
+            VERSION: 'v17-mainchain-filter',
 
             // Display
             MAX_BLOCKS: 500,
@@ -388,8 +388,9 @@
             },
 
             // Selected Chain (Selected Parent Chain)
-            selectedChainEdges: [],    // [[fromHash, toHash], ...]
-            selectedChainBlocks: new Set(),  // Blocks on selected chain
+            selectedChainEdges: [],    // [[fromHash, toHash], ...] - accumulated from all tips
+            selectedChainBlocks: new Set(),  // Blocks on main chain (larger display)
+            mainChainEdgeSet: new Set(),  // Edge keys for current main chain (green display)
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
@@ -647,8 +648,7 @@
                 }
             }
 
-            // Draw Selected Chain edges (from each Tip, merging at LCCA)
-            // Skip edges where both endpoints have converged to Y≈0
+            // Draw Selected Chain edges (only main chain in green, others as gray)
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 let chainDrawn = false;
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -658,6 +658,16 @@
                     if (idx1 !== undefined && idx2 !== undefined) {
                         // Skip if both endpoints have converged to Y=0
                         if (Math.abs(y[idx1]) <= 5 && Math.abs(y[idx2]) <= 5) {
+                            continue;
+                        }
+
+                        // Check if this edge is on the main chain (bestTip → LCCA)
+                        const edgeKey = `${fromHash}->${toHash}`;
+                        const isMainChainEdge = State.mainChainEdgeSet && State.mainChainEdgeSet.has(edgeKey);
+
+                        // Only draw green for main chain edges
+                        // Other edges are shown as gray parent edges already
+                        if (!isMainChainEdge) {
                             continue;
                         }
 
@@ -1237,7 +1247,14 @@
                 }
 
                 State.selectedChainEdges = mergedEdges;
-                State.selectedChainBlocks = chainBlocks;
+
+                // Build main chain edge set for green rendering (current bestTip chain only)
+                const mainChainEdgeSet = new Set();
+                for (let i = 0; i < chainList.length - 1; i++) {
+                    mainChainEdgeSet.add(`${chainList[i]}->${chainList[i + 1]}`);
+                }
+                State.mainChainEdgeSet = mainChainEdgeSet;
+                State.selectedChainBlocks = new Set(chainList);  // Only main chain for larger blocks
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
