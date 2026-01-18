@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v34-perf-debug',
+            VERSION: 'v35-cache',
 
             // Display
             MAX_BLOCKS: 500,
@@ -404,7 +404,12 @@
                 selectParent: { calls: 0, time: 0 },
                 selectBest: { calls: 0, time: 0 },
                 compareRank: { calls: 0 },
+                cacheHits: 0,
             },
+
+            // Selected Parent Cache (dkoder optimization)
+            // Map<blockHash, selectedParentHash>
+            selectedParentCache: new Map(),
         };
 
         // ------------------------------------------------------------
@@ -508,6 +513,7 @@
                 State.perf.selectParent = { calls: 0, time: 0 };
                 State.perf.selectBest = { calls: 0, time: 0 };
                 State.perf.compareRank = { calls: 0 };
+                State.perf.cacheHits = 0;
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
             }
@@ -773,6 +779,7 @@
 
             // Build Selected Parent Chain for each hash (dkoder compliant)
             // Follow ONLY the selected parent (highest blue_work) at each step
+            // Uses cache to avoid repeated blue_work comparisons
             const chains = hashes.map(hash => {
                 const chain = new Set([hash]);
                 let current = hash;
@@ -781,8 +788,19 @@
                     if (idx === undefined) break;
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
-                    // Select parent with highest blue_work (dkoder's selected parent)
-                    const selectedParent = selectBestFromGroup(parents);
+
+                    // Check cache first (dkoder optimization)
+                    let selectedParent = State.selectedParentCache.get(current);
+                    if (selectedParent === undefined) {
+                        // Not in cache, compute and store
+                        selectedParent = selectBestFromGroup(parents);
+                        if (selectedParent) {
+                            State.selectedParentCache.set(current, selectedParent);
+                        }
+                    } else {
+                        State.perf.cacheHits++;
+                    }
+
                     if (!selectedParent || chain.has(selectedParent)) break;
                     chain.add(selectedParent);
                     current = selectedParent;
@@ -1544,8 +1562,8 @@
                     // Performance breakdown
                     const p = State.perf;
                     debugText += ` | LCCA:${p.findLCCA.calls}x/${p.findLCCA.time.toFixed(0)}ms`;
-                    debugText += ` selP:${p.selectParent.calls}x/${p.selectParent.time.toFixed(0)}ms`;
                     debugText += ` selB:${p.selectBest.calls}x cmp:${p.compareRank.calls}x`;
+                    debugText += ` cache:${p.cacheHits}hits/${State.selectedParentCache.size}`;
                 } else {
                     debugText += 'Calculating...';
                 }
