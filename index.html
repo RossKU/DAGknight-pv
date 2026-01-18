@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v16-mainchain',
+            VERSION: 'v15-chainblue',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1194,15 +1194,50 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Build main chain edges from chainList only (not all tips)
-                // Only the bestTip → LCCA chain is shown in green
-                const mainChainEdges = [];
-                for (let i = 0; i < chainList.length - 1; i++) {
-                    mainChainEdges.push([chainList[i], chainList[i + 1]]);
+                // Accumulate Selected Chain edges (don't remove until both endpoints reach Y=0)
+                // This ensures edges stay visible during the animation
+                const { y } = State.blockData;
+
+                // Keep old edges where at least one endpoint hasn't converged to Y=0
+                const survivingOldEdges = [];
+                if (State.selectedChainEdges) {
+                    for (const [fromHash, toHash] of State.selectedChainEdges) {
+                        const idx1 = State.blockHashToIndex.get(fromHash);
+                        const idx2 = State.blockHashToIndex.get(toHash);
+
+                        // Keep edge if both blocks still exist and at least one hasn't converged
+                        if (idx1 !== undefined && idx2 !== undefined) {
+                            if (Math.abs(y[idx1]) > 5 || Math.abs(y[idx2]) > 5) {
+                                survivingOldEdges.push([fromHash, toHash]);
+                            }
+                        }
+                    }
                 }
 
-                State.selectedChainEdges = mainChainEdges;
-                State.selectedChainBlocks = new Set(chainList);  // Only main chain blocks
+                // Merge: old surviving edges + new edges (deduplicated)
+                const edgeSet = new Set();
+                const mergedEdges = [];
+
+                // Add surviving old edges first
+                for (const edge of survivingOldEdges) {
+                    const key = `${edge[0]}->${edge[1]}`;
+                    if (!edgeSet.has(key)) {
+                        edgeSet.add(key);
+                        mergedEdges.push(edge);
+                    }
+                }
+
+                // Add new edges
+                for (const edge of edges) {
+                    const key = `${edge[0]}->${edge[1]}`;
+                    if (!edgeSet.has(key)) {
+                        edgeSet.add(key);
+                        mergedEdges.push(edge);
+                    }
+                }
+
+                State.selectedChainEdges = mergedEdges;
+                State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
