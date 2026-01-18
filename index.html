@@ -153,6 +153,7 @@
         .color-red { background: #E74C3C; }
         .color-vspc { background: #00FF88; box-shadow: 0 0 8px #00FF88; }
         .color-cluster { background: #9B59B6; }
+        .color-lcca { background: #FFD700; box-shadow: 0 0 8px #FFD700; }
 
         /* Controls */
         #controls {
@@ -266,6 +267,7 @@
             <div class="item"><div class="color color-red"></div> Red Block</div>
             <div class="item"><div class="color color-vspc"></div> Selected Chain</div>
             <div class="item"><div class="color color-cluster"></div> Honest Cluster</div>
+            <div class="item"><div class="color color-lcca"></div> LCCA</div>
         </div>
 
         <div id="controls">
@@ -297,7 +299,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v35-cache',
+            VERSION: 'v36-lcca-yellow',
 
             // Display
             MAX_BLOCKS: 500,
@@ -314,6 +316,7 @@
                 BLUE_BLOCK: 0x4A90D9,
                 RED_BLOCK: 0xE74C3C,
                 SELECTED_CHAIN: 0x00FF88,
+                LCCA: 0xFFD700,  // Gold/Yellow for LCCA
                 EDGE: 0x334455,
                 EDGE_SELECTED: 0xFFFFFF,
                 HONEST_CLUSTER: 0x9B59B6,
@@ -648,7 +651,7 @@
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
-            // Draw LCCA block (larger green block at convergence point)
+            // Draw LCCA block (larger yellow block at convergence point)
             if (State.lccaHash) {
                 const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
                 if (lccaIdx !== undefined) {
@@ -658,10 +661,10 @@
                     // Only draw if visible
                     if (lccaScreenX >= -50 && lccaScreenX <= width + 50 &&
                         lccaScreenY >= -50 && lccaScreenY <= height + 50) {
-                        const lccaSize = 14 * zoom;  // Larger than normal blocks (8px)
+                        const lccaSize = 18 * zoom;  // Larger than chain blocks (14px)
                         const lccaHalfSize = lccaSize / 2;
                         vspc.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
-                        vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Green
+                        vspc.fill({ color: CONFIG.COLORS.LCCA });  // Yellow/Gold
                     }
                 }
             }
