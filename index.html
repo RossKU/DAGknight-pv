@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v33-lcca-depth30',
+            VERSION: 'v34-perf-debug',
 
             // Display
             MAX_BLOCKS: 500,
@@ -397,6 +397,14 @@
 
             // Debug info
             debug: null,
+
+            // Performance profiling
+            perf: {
+                findLCCA: { calls: 0, time: 0 },
+                selectParent: { calls: 0, time: 0 },
+                selectBest: { calls: 0, time: 0 },
+                compareRank: { calls: 0 },
+            },
         };
 
         // ------------------------------------------------------------
@@ -495,6 +503,11 @@
 
             // Run DAGknight calculation periodically (every 500ms)
             if (now - State.lastDagknightCalc >= 500) {
+                // Reset perf counters
+                State.perf.findLCCA = { calls: 0, time: 0 };
+                State.perf.selectParent = { calls: 0, time: 0 };
+                State.perf.selectBest = { calls: 0, time: 0 };
+                State.perf.compareRank = { calls: 0 };
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
             }
@@ -753,8 +766,10 @@
 
         // Step 2.3: Find Latest Common Chain Ancestor (LCCA)
         function findLCCA(hashes) {
-            if (hashes.length === 0) return null;
-            if (hashes.length === 1) return hashes[0];
+            const start = performance.now();
+            State.perf.findLCCA.calls++;
+            if (hashes.length === 0) { State.perf.findLCCA.time += performance.now() - start; return null; }
+            if (hashes.length === 1) { State.perf.findLCCA.time += performance.now() - start; return hashes[0]; }
 
             // Build Selected Parent Chain for each hash (dkoder compliant)
             // Follow ONLY the selected parent (highest blue_work) at each step
@@ -794,6 +809,7 @@
                     }
                 }
             }
+            State.perf.findLCCA.time += performance.now() - start;
             return lcca;
         }
 
@@ -868,6 +884,7 @@
 
         // Step 2.5: Compare RankValue (k, blueWork, selectedParentHash)
         function compareRank(hashA, hashB) {
+            State.perf.compareRank.calls++;
             const idxA = State.blockHashToIndex.get(hashA);
             const idxB = State.blockHashToIndex.get(hashB);
             if (idxA === undefined || idxB === undefined) return 0;
@@ -898,8 +915,10 @@
 
         // Step 2.6: Select best block from a group using RankValue
         function selectBestFromGroup(blockHashes) {
-            if (blockHashes.length === 0) return null;
-            if (blockHashes.length === 1) return blockHashes[0];
+            const start = performance.now();
+            State.perf.selectBest.calls++;
+            if (blockHashes.length === 0) { State.perf.selectBest.time += performance.now() - start; return null; }
+            if (blockHashes.length === 1) { State.perf.selectBest.time += performance.now() - start; return blockHashes[0]; }
 
             let best = blockHashes[0];
             for (let i = 1; i < blockHashes.length; i++) {
@@ -907,26 +926,30 @@
                     best = blockHashes[i];
                 }
             }
+            State.perf.selectBest.time += performance.now() - start;
             return best;
         }
 
         // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
         function selectParent(parentHashes, depth = 0) {
+            const start = performance.now();
+            State.perf.selectParent.calls++;
             // Prevent infinite recursion
-            if (depth > 10) return selectBestFromGroup(parentHashes);
+            if (depth > 10) { State.perf.selectParent.time += performance.now() - start; return selectBestFromGroup(parentHashes); }
 
-            if (parentHashes.length === 0) return null;
-            if (parentHashes.length === 1) return parentHashes[0];
+            if (parentHashes.length === 0) { State.perf.selectParent.time += performance.now() - start; return null; }
+            if (parentHashes.length === 1) { State.perf.selectParent.time += performance.now() - start; return parentHashes[0]; }
 
             // Find LCCA
             const lcca = findLCCA(parentHashes);
-            if (!lcca) return selectBestFromGroup(parentHashes);
+            if (!lcca) { State.perf.selectParent.time += performance.now() - start; return selectBestFromGroup(parentHashes); }
 
             // Group by conflict zone
             const groups = groupByConflictZone(parentHashes, lcca);
 
             // If only one group, select best from that group
             if (groups.size <= 1) {
+                State.perf.selectParent.time += performance.now() - start;
                 return selectBestFromGroup(parentHashes);
             }
 
@@ -938,6 +961,7 @@
             }
 
             // Recursively select among group winners (with depth limit)
+            State.perf.selectParent.time += performance.now() - start;
             return selectParent(groupWinners, depth + 1);
         }
 
@@ -1516,7 +1540,12 @@
                 if (State.debug?.error) {
                     debugText += `ERR: ${State.debug.error}`;
                 } else if (State.debug) {
-                    debugText += `Tips:${State.debug.tips} Chain:${State.debug.chainLen} Lin:${State.debug.linearLen} T:${State.debug.calcTime}ms`;
+                    debugText += `T:${State.debug.calcTime}ms`;
+                    // Performance breakdown
+                    const p = State.perf;
+                    debugText += ` | LCCA:${p.findLCCA.calls}x/${p.findLCCA.time.toFixed(0)}ms`;
+                    debugText += ` selP:${p.selectParent.calls}x/${p.selectParent.time.toFixed(0)}ms`;
+                    debugText += ` selB:${p.selectBest.calls}x cmp:${p.compareRank.calls}x`;
                 } else {
                     debugText += 'Calculating...';
                 }
