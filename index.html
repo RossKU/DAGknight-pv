@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v15-chainblue',
+            VERSION: 'v19-noYcheck',
 
             // Display
             MAX_BLOCKS: 500,
@@ -648,7 +648,7 @@
             }
 
             // Draw Selected Chain edges (from each Tip, merging at LCCA)
-            // Skip edges where both endpoints have converged to Y≈0
+            // NO Y check - show edges even at Y=0 (the winning paths from all tips)
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 let chainDrawn = false;
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
@@ -656,11 +656,6 @@
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        // Skip if both endpoints have converged to Y=0
-                        if (Math.abs(y[idx1]) <= 5 && Math.abs(y[idx2]) <= 5) {
-                            continue;
-                        }
-
                         const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                         const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                         const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
@@ -1194,22 +1189,19 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Accumulate Selected Chain edges (don't remove until both endpoints reach Y=0)
-                // This ensures edges stay visible during the animation
-                const { y } = State.blockData;
+                // Accumulate Selected Chain edges (keep until blocks are deleted)
+                // NO Y check - edges stay visible even at Y=0
 
-                // Keep old edges where at least one endpoint hasn't converged to Y=0
+                // Keep old edges where both blocks still exist
                 const survivingOldEdges = [];
                 if (State.selectedChainEdges) {
                     for (const [fromHash, toHash] of State.selectedChainEdges) {
                         const idx1 = State.blockHashToIndex.get(fromHash);
                         const idx2 = State.blockHashToIndex.get(toHash);
 
-                        // Keep edge if both blocks still exist and at least one hasn't converged
+                        // Keep edge if both blocks still exist (removed when blocks are cleaned up)
                         if (idx1 !== undefined && idx2 !== undefined) {
-                            if (Math.abs(y[idx1]) > 5 || Math.abs(y[idx2]) > 5) {
-                                survivingOldEdges.push([fromHash, toHash]);
-                            }
+                            survivingOldEdges.push([fromHash, toHash]);
                         }
                     }
                 }
