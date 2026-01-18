@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v12-lcca',
+            VERSION: 'v14-chainblocks',
 
             // Display
             MAX_BLOCKS: 500,
@@ -532,7 +532,7 @@
 
             if (State.blockCount === 0) return;
 
-            const { size, isBlue, parentHashes } = State.blockData;
+            const { size, isBlue, parentHashes, hashes } = State.blockData;
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
@@ -587,7 +587,14 @@
             }
 
             // Second pass: draw blocks (on top of edges)
+            // Chain blocks are drawn larger (14px vs 8px)
+            const chainBlockSize = 14 * zoom;
+            const chainHalfSize = chainBlockSize / 2;
+
             for (let i = 0; i < State.blockCount; i++) {
+                const hash = hashes[i];
+                if (!hash) continue;
+
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
@@ -597,22 +604,31 @@
                     continue;
                 }
 
-                const blockSize = size[i] * zoom;
-                const halfSize = blockSize / 2;
+                // Check if this block is on the Selected Chain
+                const isChainBlock = State.selectedChainBlocks && State.selectedChainBlocks.has(hash);
 
-                // Choose graphics based on color (blue or red)
-                if (isBlue[i]) {
-                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                if (isChainBlock) {
+                    // Draw chain blocks larger (same size as LCCA)
+                    vspc.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize);
                 } else {
-                    redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    // Draw regular blocks at normal size
+                    const blockSize = size[i] * zoom;
+                    const halfSize = blockSize / 2;
+
+                    if (isBlue[i]) {
+                        blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    } else {
+                        redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    }
                 }
 
                 visibleCount++;
             }
 
-            // Fill all blocks at once (2 draw calls: blue + red)
+            // Fill all blocks at once
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
+            vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Chain blocks in green
 
             // Draw LCCA block (larger green block at convergence point)
             if (State.lccaHash) {
