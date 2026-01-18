@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v30-rightmost-fix',
+            VERSION: 'v31-both-endpoints',
 
             // Display
             MAX_BLOCKS: 500,
@@ -648,8 +648,8 @@
             }
 
             // Draw Selected Chain edges - classify at render time using targetX
-            // Blue = rightmost endpoint's targetX <= LCCA's targetX (finalized, stays at/left of LCCA)
-            // Green = rightmost endpoint's targetX > LCCA's targetX (active, extends beyond LCCA)
+            // Green = BOTH endpoints' targetX >= LCCA's targetX (fully in active area)
+            // Blue = at least one endpoint < LCCA's targetX (extends into finalized area)
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 const { targetX } = State.blockData;
 
@@ -665,14 +665,14 @@
                 let blueDrawn = false;
                 let greenDrawn = false;
 
-                // First pass: blue edges (rightmost targetX <= lccaTargetX)
+                // First pass: blue edges (at least one endpoint < lccaTargetX)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const rightmostTargetX = Math.max(targetX[idx1], targetX[idx2]);
-                        if (rightmostTargetX <= lccaTargetX) {
+                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        if (!bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
@@ -687,14 +687,14 @@
                     vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
                 }
 
-                // Second pass: green edges (rightmost targetX > lccaTargetX)
+                // Second pass: green edges (BOTH endpoints >= lccaTargetX)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const rightmostTargetX = Math.max(targetX[idx1], targetX[idx2]);
-                        if (rightmostTargetX > lccaTargetX) {
+                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        if (bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
