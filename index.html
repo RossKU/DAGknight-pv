@@ -299,7 +299,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v37-zorder',
+            VERSION: 'v38-zorder-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -460,16 +460,18 @@
             // Create Graphics objects ONCE (reused every frame)
             State.graphics = {
                 edges: new PIXI.Graphics(),
+                chainEdges: new PIXI.Graphics(),  // Selected Chain edges (behind blocks)
                 blueBlocks: new PIXI.Graphics(),
                 redBlocks: new PIXI.Graphics(),
-                vspc: new PIXI.Graphics(),
+                lcca: new PIXI.Graphics(),  // LCCA block (on top)
             };
 
-            // Add to stage (layered: edges behind blocks)
-            State.app.stage.addChild(State.graphics.edges);
-            State.app.stage.addChild(State.graphics.blueBlocks);
-            State.app.stage.addChild(State.graphics.redBlocks);
-            State.app.stage.addChild(State.graphics.vspc);
+            // Add to stage (layered: back to front)
+            State.app.stage.addChild(State.graphics.edges);       // 1. Gray edges (back)
+            State.app.stage.addChild(State.graphics.chainEdges);  // 2. Selected Chain edges
+            State.app.stage.addChild(State.graphics.blueBlocks);  // 3. Blue blocks
+            State.app.stage.addChild(State.graphics.redBlocks);   // 4. Red blocks
+            State.app.stage.addChild(State.graphics.lcca);        // 5. LCCA (front)
 
             // Store viewport dimensions
             State.viewport.width = State.app.screen.width;
@@ -529,7 +531,7 @@
         // DAG Rendering (Optimized: reuse Graphics objects)
         // ------------------------------------------------------------
         function renderDAG() {
-            const { edges, blueBlocks, redBlocks, vspc } = State.graphics;
+            const { edges, chainEdges, blueBlocks, redBlocks, lcca } = State.graphics;
 
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
@@ -548,9 +550,10 @@
 
             // Clear previous frame (reuse same objects)
             edges.clear();
+            chainEdges.clear();
             blueBlocks.clear();
             redBlocks.clear();
-            vspc.clear();
+            lcca.clear();
 
             if (State.blockCount === 0) return;
 
@@ -677,14 +680,14 @@
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
                             const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                            vspc.moveTo(screenX1, screenY1);
-                            vspc.lineTo(screenX2, screenY2);
+                            chainEdges.moveTo(screenX1, screenY1);
+                            chainEdges.lineTo(screenX2, screenY2);
                             blueDrawn = true;
                         }
                     }
                 }
                 if (blueDrawn) {
-                    vspc.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
+                    chainEdges.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
                 }
 
                 // Second pass: green edges (BOTH endpoints >= lccaTargetX)
@@ -699,14 +702,14 @@
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
                             const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                            vspc.moveTo(screenX1, screenY1);
-                            vspc.lineTo(screenX2, screenY2);
+                            chainEdges.moveTo(screenX1, screenY1);
+                            chainEdges.lineTo(screenX2, screenY2);
                             greenDrawn = true;
                         }
                     }
                 }
                 if (greenDrawn) {
-                    vspc.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
+                    chainEdges.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
                 }
             }
 
@@ -726,8 +729,8 @@
                         lccaScreenY >= -50 && lccaScreenY <= height + 50) {
                         const lccaSize = 18 * zoom;  // Larger than chain blocks (14px)
                         const lccaHalfSize = lccaSize / 2;
-                        vspc.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
-                        vspc.fill({ color: CONFIG.COLORS.LCCA });  // Yellow/Gold
+                        lcca.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
+                        lcca.fill({ color: CONFIG.COLORS.LCCA });  // Yellow/Gold
                     }
                 }
             }
