@@ -297,7 +297,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v14-chainblocks',
+            VERSION: 'v15-chainblue',
 
             // Display
             MAX_BLOCKS: 500,
@@ -604,12 +604,12 @@
                     continue;
                 }
 
-                // Check if this block is on the Selected Chain
+                // Check if this block is on the Selected Chain (larger size, but blue)
                 const isChainBlock = State.selectedChainBlocks && State.selectedChainBlocks.has(hash);
 
                 if (isChainBlock) {
-                    // Draw chain blocks larger (same size as LCCA)
-                    vspc.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize);
+                    // Draw chain blocks larger but still blue
+                    blueBlocks.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize);
                 } else {
                     // Draw regular blocks at normal size
                     const blockSize = size[i] * zoom;
@@ -628,7 +628,6 @@
             // Fill all blocks at once
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
-            vspc.fill({ color: CONFIG.COLORS.SELECTED_CHAIN });  // Chain blocks in green
 
             // Draw LCCA block (larger green block at convergence point)
             if (State.lccaHash) {
