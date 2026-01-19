@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v60-chain-blueWork',
+            VERSION: 'v61-chain-debug',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1173,26 +1173,50 @@
             const chain = [];
             let current = selectedParent;
             const visited = new Set();
+            let walkSteps = 0;
+            let outsideZoneCount = 0;
+            let stopReason = 'unknown';
 
             // Walk backwards from selectedParent to root
             while (current && current !== root && !visited.has(current)) {
                 visited.add(current);
+                walkSteps++;
 
                 // Only include if in zone
                 if (zoneBlocksSet.has(current)) {
                     chain.push(current);
+                } else {
+                    outsideZoneCount++;
                 }
 
                 // Get parent with highest blueWork (selected parent's parent)
                 const idx = State.blockHashToIndex.get(current);
-                if (idx === undefined) break;
+                if (idx === undefined) {
+                    stopReason = 'no-idx';
+                    break;
+                }
 
                 const parents = State.blockData.parentHashes[idx] || [];
-                if (parents.length === 0) break;
+                if (parents.length === 0) {
+                    stopReason = 'no-parents';
+                    break;
+                }
 
                 // Find parent with highest blueWork
                 current = findSelectedParent(parents);
             }
+
+            // Determine final stop reason
+            if (stopReason === 'unknown') {
+                if (!current) stopReason = 'null-current';
+                else if (current === root) stopReason = 'reached-root';
+                else if (visited.has(current)) stopReason = 'cycle';
+            }
+
+            // Debug: track chain walk stats
+            State.dagknight.lastChainWalkSteps = walkSteps;
+            State.dagknight.lastChainOutsideZone = outsideZoneCount;
+            State.dagknight.lastChainStopReason = stopReason;
 
             return chain;
         }
@@ -1255,8 +1279,8 @@
             // Search for minimal k where blueWork >= zoneWork / 2
             const halfZoneWork = zoneWork / 2n;
 
-            // Optimization: limit k search (normal cases need k=0-10)
-            const MAX_K = 32;
+            // Optimization: limit k search (increased to 64 for debugging)
+            const MAX_K = 64;
 
             // Debug: track parent count
             State.dagknight.lastParentCount = subgroup.length;
@@ -2409,6 +2433,12 @@
                     line4 += ` +merge:${State.dagknight.lastMergesetBluesCount ?? 0})`;
                     line4 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
                     lines.push(line4);
+
+                    // Line 5: Chain walk debug
+                    let line5 = `walk:${State.dagknight.lastChainWalkSteps ?? 0}steps`;
+                    line5 += ` out:${State.dagknight.lastChainOutsideZone ?? 0}`;
+                    line5 += ` stop:${State.dagknight.lastChainStopReason ?? '?'}`;
+                    lines.push(line5);
                 }
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
