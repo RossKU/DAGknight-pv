@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v67-fix-hex-bigint',
+            VERSION: 'v68-kCol-perf-track',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1379,7 +1379,9 @@
                     // Get mergeset (anticone of SP among parents in store)
                     const mergeset = getMergesetBounded(selectedParent, parentsInStore, blockHash);
 
-                    // k-colouring on mergeset
+                    // k-colouring on mergeset (track perf like old kColouring)
+                    const kColStart = performance.now();
+                    State.dagknight.perf.kColouring.calls++;
                     const mergesetBlues = [];
                     const mergesetReds = [];
 
@@ -1397,6 +1399,7 @@
                             blueStatusStore.set(candidate, 'red');
                         }
                     }
+                    State.dagknight.perf.kColouring.time += performance.now() - kColStart;
 
                     mergesetBluesStore.set(blockHash, mergesetBlues);
                     mergesetRedsStore.set(blockHash, mergesetReds);
