@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v47-256bit-scale',
+            VERSION: 'v48-bits-debug',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2135,6 +2135,17 @@
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
             State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
             State.blockData.bits[index] = Number(blockInfo.header.bits || 0);
+
+            // Debug: Log bits value (first 5 blocks only)
+            if (State.blockCount < 5) {
+                console.log('Block bits debug:', {
+                    hash: hash.substring(0, 16) + '...',
+                    bits: blockInfo.header.bits,
+                    bitsHex: blockInfo.header.bits ? '0x' + blockInfo.header.bits.toString(16) : 'undefined',
+                    bitsStored: State.blockData.bits[index],
+                    headerKeys: Object.keys(blockInfo.header)
+                });
+            }
 
             // Color: Start as Pending (gray), will be confirmed when child arrives
             State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
