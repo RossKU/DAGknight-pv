@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v40-dagknight-engine',
+            VERSION: 'v41-perf-cache',
 
             // Display
             MAX_BLOCKS: 500,
@@ -446,6 +446,23 @@
                 mergesetBlues: new Map(),      // hash → Set<hash>
                 mergesetReds: new Map(),       // hash → Set<hash>
                 coloringK: new Map(),          // hash → k value used
+
+                // Caches (dkoder optimization)
+                ancestorCache: new Map(),      // "hashA:hashB" → boolean
+                kColouringCache: new Map(),    // "parents_hash:k" → result
+                ancestorCacheHits: 0,
+                ancestorCacheMisses: 0,
+
+                // Performance profiling
+                perf: {
+                    isAncestor: { calls: 0, time: 0 },
+                    commonChainAncestor: { calls: 0, time: 0 },
+                    calcConflictZoneWork: { calls: 0, time: 0 },
+                    kColouring: { calls: 0, time: 0 },
+                    checkBlueCandidate: { calls: 0, time: 0 },
+                    rank: { calls: 0, time: 0 },
+                    addBlockColoring: { calls: 0, time: 0 },
+                },
 
                 // Parameters
                 d: 10,  // deficit parameter for confirmation
@@ -852,8 +869,17 @@
 
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
         function commonChainAncestor(hashes) {
-            if (!hashes || hashes.length === 0) return null;
-            if (hashes.length === 1) return hashes[0];
+            const start = performance.now();
+            State.dagknight.perf.commonChainAncestor.calls++;
+
+            if (!hashes || hashes.length === 0) {
+                State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
+                return null;
+            }
+            if (hashes.length === 1) {
+                State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
+                return hashes[0];
+            }
 
             // Build Selected Parent Chain for each hash
             const chains = hashes.map(hash => {
@@ -889,9 +915,13 @@
                         break;
                     }
                 }
-                if (isCommon) return hash;
+                if (isCommon) {
+                    State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
+                    return hash;
+                }
             }
 
+            State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
             return null;
         }
 
@@ -1023,8 +1053,14 @@
 
         // kColouring: Perform k-colouring on parents (dkoder: k_colouring)
         function kColouring(parentHashes, k, selectedParentOverride = null) {
+            const start = performance.now();
+            State.dagknight.perf.kColouring.calls++;
+
             const selectedParent = selectedParentOverride || findSelectedParent(parentHashes);
-            if (!selectedParent) return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
+            if (!selectedParent) {
+                State.dagknight.perf.kColouring.time += performance.now() - start;
+                return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
+            }
 
             const mergeset = orderedMergesetWithoutSelectedParent(selectedParent, parentHashes);
             const mergesetBlues = new Set();
@@ -1039,6 +1075,7 @@
                 }
             }
 
+            State.dagknight.perf.kColouring.time += performance.now() - start;
             return {
                 selectedParent,
                 mergesetBlues,
@@ -1095,6 +1132,9 @@
 
         // rank: Determine ranking by searching k-space (dkoder: rank)
         function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
+            const start = performance.now();
+            State.dagknight.perf.rank.calls++;
+
             // Search for minimal k where blueWork >= zoneWork / 2
             const halfZoneWork = zoneWork / 2n;
 
@@ -1102,6 +1142,7 @@
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
                 if (data.blueWork >= halfZoneWork) {
+                    State.dagknight.perf.rank.time += performance.now() - start;
                     return {
                         k,
                         subgroupVirtual: data,
@@ -1110,6 +1151,7 @@
             }
 
             // Fallback: use k=255
+            State.dagknight.perf.rank.time += performance.now() - start;
             return {
                 k: 255,
                 subgroupVirtual: fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, 255),
@@ -1215,7 +1257,23 @@
 
         // Step 2.2: Reachability - Check if blockA is ancestor of blockB
         function isAncestor(hashA, hashB, maxDepth = 100) {
-            if (hashA === hashB) return true;
+            const start = performance.now();
+            State.dagknight.perf.isAncestor.calls++;
+
+            if (hashA === hashB) {
+                State.dagknight.perf.isAncestor.time += performance.now() - start;
+                return true;
+            }
+
+            // Check cache first (dkoder optimization)
+            const cacheKey = hashA + ':' + hashB;
+            const cached = State.dagknight.ancestorCache.get(cacheKey);
+            if (cached !== undefined) {
+                State.dagknight.ancestorCacheHits++;
+                State.dagknight.perf.isAncestor.time += performance.now() - start;
+                return cached;
+            }
+            State.dagknight.ancestorCacheMisses++;
 
             const visited = new Set();
             const queue = [hashB];
@@ -1225,7 +1283,12 @@
                 const levelSize = queue.length;
                 for (let i = 0; i < levelSize; i++) {
                     const currentHash = queue.shift();
-                    if (currentHash === hashA) return true;
+                    if (currentHash === hashA) {
+                        // Cache positive result
+                        State.dagknight.ancestorCache.set(cacheKey, true);
+                        State.dagknight.perf.isAncestor.time += performance.now() - start;
+                        return true;
+                    }
                     if (visited.has(currentHash)) continue;
                     visited.add(currentHash);
 
@@ -1241,6 +1304,10 @@
                 }
                 depth++;
             }
+
+            // Cache negative result
+            State.dagknight.ancestorCache.set(cacheKey, false);
+            State.dagknight.perf.isAncestor.time += performance.now() - start;
             return false;
         }
 
@@ -2091,11 +2158,14 @@
                     debugText += `ERR: ${State.debug.error}`;
                 } else if (State.debug) {
                     debugText += `T:${State.debug.calcTime}ms`;
-                    // Performance breakdown
-                    const p = State.perf;
-                    debugText += ` | LCCA:${p.findLCCA.calls}x/${p.findLCCA.time.toFixed(0)}ms`;
-                    debugText += ` selB:${p.selectBest.calls}x cmp:${p.compareRank.calls}x`;
-                    debugText += ` cache:${p.cacheHits}hits/${State.selectedParentCache.size}`;
+                    // DAGknight Engine performance breakdown
+                    const dk = State.dagknight.perf;
+                    debugText += ` | isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
+                    debugText += ` CCA:${dk.commonChainAncestor.calls}x/${dk.commonChainAncestor.time.toFixed(0)}ms`;
+                    debugText += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
+                    debugText += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
+                    // Cache stats
+                    debugText += ` | cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
                 } else {
                     debugText += 'Calculating...';
                 }
