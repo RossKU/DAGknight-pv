@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v66-dkoder-heap-root',
+            VERSION: 'v67-fix-hex-bigint',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1194,11 +1194,19 @@
         // --- Step 4: DagknightExecutor - dkoder-aligned incremental processing ---
 
         // getBlueWorkForSort: Get blue_work for sorting (from global GHOSTDAG data)
+        // blueWork is stored as hex string from API, convert to BigInt for numeric comparison
         function getBlueWorkForSort(hash) {
             const idx = State.blockHashToIndex.get(hash);
             if (idx === undefined) return 0n;
-            // Use the stored blueWork from GHOSTDAG (not zone-local)
-            return BigInt(State.blockData.blueWork?.[idx] || 0);
+            const hexStr = State.blockData.blueWork?.[idx];
+            if (!hexStr || hexStr === '0') return 0n;
+            // Convert hex string to BigInt (add 0x prefix)
+            try {
+                return BigInt('0x' + hexStr);
+            } catch (e) {
+                // Fallback: if not valid hex, try as decimal
+                return BigInt(hexStr || 0);
+            }
         }
 
         // getParentsInStore: Get parents that are already in blueWorkStore (dkoder approach)
