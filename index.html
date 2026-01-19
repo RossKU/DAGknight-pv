@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v58-debug-flow',
+            VERSION: 'v59-use-dagknight',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1250,18 +1250,33 @@
         }
 
         // dagknight: Main parent selection (dkoder: dagknight)
+        // Returns { selectedParent, coloringResult, k } for batch coloring
         function dagknight(parentHashes) {
             // Debug: track early return reason
             State.dagknight.lastEarlyReturn = null;
             State.dagknight.lastParentHashCount = parentHashes?.length || 0;
 
+            // Helper: create fallback result with k=18
+            const fallbackResult = (selectedParent) => {
+                const coloringResult = kColouring(parentHashes, 18);
+                return {
+                    selectedParent: selectedParent || coloringResult.selectedParent,
+                    coloringResult,
+                    k: 18,
+                };
+            };
+
             if (!parentHashes || parentHashes.length === 0) {
                 State.dagknight.lastEarlyReturn = 'no-parents';
-                return null;
+                return { selectedParent: null, coloringResult: null, k: 0 };
             }
             if (parentHashes.length === 1) {
                 State.dagknight.lastEarlyReturn = 'single-parent';
-                return parentHashes[0];
+                return {
+                    selectedParent: parentHashes[0],
+                    coloringResult: { selectedParent: parentHashes[0], mergesetBlues: new Set(), mergesetReds: new Set() },
+                    k: 0,
+                };
             }
 
             // Step 1: Find conflict genesis (LCCA)
@@ -1269,7 +1284,7 @@
             State.dagknight.lastConflictGenesis = conflictGenesis ? 'found' : 'null';
             if (!conflictGenesis) {
                 State.dagknight.lastEarlyReturn = 'no-genesis';
-                return findSelectedParent(parentHashes);
+                return fallbackResult(null);
             }
 
             // Step 2: Calculate zone work AND get zone blocks
@@ -1280,15 +1295,20 @@
 
             if (zoneWork === 0n) {
                 State.dagknight.lastEarlyReturn = 'zoneWork=0';
-                return findSelectedParent(parentHashes);
+                return fallbackResult(null);
             }
 
             // Step 3: Rank using zone blocks (same blocks used for zoneWork)
             State.dagknight.lastEarlyReturn = 'rank-called';
             const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
 
-            // Return selected parent from winning subgroup
-            return rankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
+            // Return full result for batch coloring
+            const selectedParent = rankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
+            return {
+                selectedParent,
+                coloringResult: rankResult.subgroupVirtual,
+                k: rankResult.k,
+            };
         }
 
         // --- Step 5: CascadeTree Functions (Confirmation) ---
@@ -1995,28 +2015,13 @@
                     if (processedParentSets.has(parentsKey)) continue;
                     processedParentSets.add(parentsKey);
 
-                    // DAGknight: Dynamic k-search using rank()
-                    const conflictGenesis = commonChainAncestor(parents);
-                    let coloringResult;
-                    let usedK = 18;
+                    // DAGknight: Call main function (dkoder-aligned structure)
+                    const dkResult = dagknight(parents);
+                    const coloringResult = dkResult.coloringResult;
+                    const usedK = dkResult.k;
 
-                    if (conflictGenesis && parents.length > 1) {
-                        // Calculate zone work
-                        const zoneWork = calcConflictZoneWork(conflictGenesis, parents);
-
-                        if (zoneWork > 0n) {
-                            // Dynamic k search: find minimal k where blueWork >= zoneWork/2
-                            const rankResult = rank(conflictGenesis, parents, zoneWork, parents);
-                            coloringResult = rankResult.subgroupVirtual;
-                            usedK = rankResult.k;
-                        } else {
-                            // Fallback: k=18
-                            coloringResult = kColouring(parents, 18);
-                        }
-                    } else {
-                        // Single parent or no LCCA: k=18
-                        coloringResult = kColouring(parents, 18);
-                    }
+                    // Skip if no valid coloring result
+                    if (!coloringResult) continue;
 
                     // Update confirmation state for parents
                     for (const parentHash of parents) {
