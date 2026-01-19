@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v51-cumulative-blueWork',
+            VERSION: 'v52-debug-work',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2283,6 +2283,15 @@
                     // Debug: Show bits value from first block
                     const firstBits = State.blockData.bits[0] || 0;
                     debugText += ` | bits:${firstBits ? '0x' + firstBits.toString(16) : 'none'}`;
+                    // Show zoneWork vs blueWork for debugging k calculation
+                    if (State.dagknight.lastZoneWork && State.dagknight.lastBlueWork) {
+                        const zw = BigInt(State.dagknight.lastZoneWork);
+                        const bw = BigInt(State.dagknight.lastBlueWork);
+                        // Show in scientific notation for readability
+                        const zwExp = zw > 0n ? zw.toString().length : 0;
+                        const bwExp = bw > 0n ? bw.toString().length : 0;
+                        debugText += ` | zW:${zwExp}d bW:${bwExp}d`;
+                    }
                 } else {
                     debugText += 'Calculating...';
                 }
