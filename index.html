@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v48-bits-debug',
+            VERSION: 'v49-bits-display',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2136,17 +2136,6 @@
             State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
             State.blockData.bits[index] = Number(blockInfo.header.bits || 0);
 
-            // Debug: Log bits value (first 5 blocks only)
-            if (State.blockCount < 5) {
-                console.log('Block bits debug:', {
-                    hash: hash.substring(0, 16) + '...',
-                    bits: blockInfo.header.bits,
-                    bitsHex: blockInfo.header.bits ? '0x' + blockInfo.header.bits.toString(16) : 'undefined',
-                    bitsStored: State.blockData.bits[index],
-                    headerKeys: Object.keys(blockInfo.header)
-                });
-            }
-
             // Color: Start as Pending (gray), will be confirmed when child arrives
             State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
             State.blockData.confirmationState[index] = 0;  // 0 = Pending
@@ -2297,6 +2286,9 @@
                     // Cache stats and coloring info
                     debugText += ` | cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
                     debugText += ` col:${State.dagknight.lastColoredCount || 0} k:${State.dagknight.lastK ?? '-'}`;
+                    // Debug: Show bits value from first block
+                    const firstBits = State.blockData.bits[0] || 0;
+                    debugText += ` | bits:${firstBits ? '0x' + firstBits.toString(16) : 'none'}`;
                 } else {
                     debugText += 'Calculating...';
                 }
