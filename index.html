@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v46-calcWork-fix',
+            VERSION: 'v47-256bit-scale',
 
             // Display
             MAX_BLOCKS: 500,
@@ -927,7 +927,10 @@
         }
 
         // calcWork: Calculate PoW work from difficulty bits (dkoder: calc_work)
-        // work ≈ 2^256 / (target + 1)
+        // work = (~target / (target + 1)) + 1 ≈ 2^256 / (target + 1)
+        // Same scale as Kaspa's blueWork (2^256 based)
+        const TWO_256 = 1n << 256n;  // 2^256
+
         function calcWork(bits) {
             if (!bits || bits === 0) return 1n;  // Fallback to 1 if no bits
 
@@ -939,8 +942,6 @@
             if (exponent === 0 || mantissa === 0) return 1n;
 
             // target = mantissa × 2^(8 × (exponent - 3))
-            // For small exponents, this is a small number
-            // For large exponents, this is a large number
             const shift = 8 * (exponent - 3);
 
             // Calculate target as BigInt
@@ -953,10 +954,10 @@
 
             if (target === 0n) return 1n;
 
-            // work = 2^256 / (target + 1)
-            // Since 2^256 is huge, we use a simplified approximation
-            // For visualization purposes, we can use 2^64 / target as proxy
-            const work = (1n << 64n) / (target + 1n);
+            // work = 2^256 / (target + 1) - same as dkoder
+            // dkoder: (!target / (target + 1)) + 1
+            // This is mathematically equivalent to 2^256 / (target + 1)
+            const work = TWO_256 / (target + 1n);
             return work > 0n ? work : 1n;
         }
 
