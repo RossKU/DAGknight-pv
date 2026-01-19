@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v44-dynamic-k',
+            VERSION: 'v45-kCol-cache',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1052,6 +1052,7 @@
         }
 
         // kColouring: Perform k-colouring on parents (dkoder: k_colouring)
+        // With caching to avoid redundant calculations
         function kColouring(parentHashes, k, selectedParentOverride = null) {
             const start = performance.now();
             State.dagknight.perf.kColouring.calls++;
@@ -1062,12 +1063,27 @@
                 return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
             }
 
+            // Cache key: sorted parents + k
+            const cacheKey = parentHashes.slice().sort().join(',') + ':' + k;
+            const cached = State.dagknight.kColouringCache.get(cacheKey);
+            if (cached) {
+                State.dagknight.perf.kColouring.time += performance.now() - start;
+                return cached;
+            }
+
             const mergeset = orderedMergesetWithoutSelectedParent(selectedParent, parentHashes);
             const mergesetBlues = new Set();
             const mergesetReds = new Set();
 
             // Process each candidate in topological order
             for (const candidateHash of mergeset) {
+                // Early termination (dkoder): if blues already at k, remaining are Red
+                if (mergesetBlues.size >= k && k > 0) {
+                    // Can't add more blues, mark rest as red
+                    mergesetReds.add(candidateHash);
+                    continue;
+                }
+
                 if (checkBlueCandidate(null, candidateHash, k, mergesetBlues)) {
                     mergesetBlues.add(candidateHash);
                 } else {
@@ -1075,13 +1091,20 @@
                 }
             }
 
-            State.dagknight.perf.kColouring.time += performance.now() - start;
-            return {
+            const result = {
                 selectedParent,
                 mergesetBlues,
                 mergesetReds,
                 blueScore: mergesetBlues.size + 1,  // +1 for selected parent
             };
+
+            // Cache result (limit cache size)
+            if (State.dagknight.kColouringCache.size < 1000) {
+                State.dagknight.kColouringCache.set(cacheKey, result);
+            }
+
+            State.dagknight.perf.kColouring.time += performance.now() - start;
+            return result;
         }
 
         // --- Step 4: DagknightExecutor Functions ---
@@ -1131,6 +1154,7 @@
         }
 
         // rank: Determine ranking by searching k-space (dkoder: rank)
+        // Optimized: limit k search to 32 (usually k=0-5 is enough)
         function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
             const start = performance.now();
             State.dagknight.perf.rank.calls++;
@@ -1138,10 +1162,20 @@
             // Search for minimal k where blueWork >= zoneWork / 2
             const halfZoneWork = zoneWork / 2n;
 
-            for (let k = 0; k < 256; k++) {  // Max k = 255
+            // Optimization: limit k search (normal cases need k=0-10)
+            const MAX_K = 32;
+
+            for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
+                // Debug: track what k values are being tried
+                if (k === 0) {
+                    State.dagknight.lastZoneWork = zoneWork.toString();
+                    State.dagknight.lastBlueWork = data.blueWork.toString();
+                }
+
                 if (data.blueWork >= halfZoneWork) {
+                    State.dagknight.lastK = k;
                     State.dagknight.perf.rank.time += performance.now() - start;
                     return {
                         k,
@@ -1150,11 +1184,12 @@
                 }
             }
 
-            // Fallback: use k=255
+            // Fallback: use MAX_K (if still not found, something is wrong)
+            State.dagknight.lastK = MAX_K;
             State.dagknight.perf.rank.time += performance.now() - start;
             return {
-                k: 255,
-                subgroupVirtual: fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, 255),
+                k: MAX_K,
+                subgroupVirtual: fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K),
             };
         }
 
@@ -2216,7 +2251,7 @@
                     debugText += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
                     // Cache stats and coloring info
                     debugText += ` | cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
-                    debugText += ` col:${State.dagknight.lastColoredCount || 0}`;
+                    debugText += ` col:${State.dagknight.lastColoredCount || 0} k:${State.dagknight.lastK ?? '-'}`;
                 } else {
                     debugText += 'Calculating...';
                 }
