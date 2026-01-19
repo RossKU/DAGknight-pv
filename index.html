@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v63-check-blue-stats',
+            VERSION: 'v64-bfs-all-ancestors',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1193,58 +1193,62 @@
 
         // --- Step 4: DagknightExecutor Functions ---
 
-        // Helper: Find blocks on selected chain from root to selectedParent within zone
-        // These blocks are implicitly blue (on the main chain)
-        function findSelectedChainInZone(root, selectedParent, zoneBlocksSet) {
-            const chain = [];
-            let current = selectedParent;
+        // Helper: Find ALL ancestors of selectedParent within zone using BFS
+        // In DAG, selectedParent has multiple paths to root - we need ALL of them
+        function findAllAncestorsInZone(root, selectedParent, zoneBlocksSet) {
+            const ancestors = [];
             const visited = new Set();
-            let walkSteps = 0;
+            const queue = [selectedParent];
+            let bfsSteps = 0;
             let outsideZoneCount = 0;
-            let stopReason = 'unknown';
+            let reachedRoot = false;
+            let maxQueueSize = 1;
 
-            // Walk backwards from selectedParent to root
-            while (current && current !== root && !visited.has(current)) {
+            // BFS: explore ALL parents, not just selected parent chain
+            while (queue.length > 0) {
+                const current = queue.shift();
+                bfsSteps++;
+
+                // Skip if already visited or is root
+                if (visited.has(current)) continue;
+                if (current === root) {
+                    reachedRoot = true;
+                    continue;
+                }
                 visited.add(current);
-                walkSteps++;
 
                 // Only include if in zone
                 if (zoneBlocksSet.has(current)) {
-                    chain.push(current);
+                    ancestors.push(current);
                 } else {
                     outsideZoneCount++;
                 }
 
-                // Get parent with highest blueWork (selected parent's parent)
+                // Get ALL parents and add to queue
                 const idx = State.blockHashToIndex.get(current);
-                if (idx === undefined) {
-                    stopReason = 'no-idx';
-                    break;
-                }
+                if (idx === undefined) continue;
 
                 const parents = State.blockData.parentHashes[idx] || [];
-                if (parents.length === 0) {
-                    stopReason = 'no-parents';
-                    break;
+                for (const parent of parents) {
+                    if (!visited.has(parent)) {
+                        queue.push(parent);
+                    }
                 }
 
-                // Find parent with highest blueWork
-                current = findSelectedParent(parents);
+                // Track max queue size for debug
+                if (queue.length > maxQueueSize) {
+                    maxQueueSize = queue.length;
+                }
             }
 
-            // Determine final stop reason
-            if (stopReason === 'unknown') {
-                if (!current) stopReason = 'null-current';
-                else if (current === root) stopReason = 'reached-root';
-                else if (visited.has(current)) stopReason = 'cycle';
-            }
+            // Debug: track BFS stats
+            State.dagknight.lastBfsSteps = bfsSteps;
+            State.dagknight.lastBfsOutsideZone = outsideZoneCount;
+            State.dagknight.lastBfsReachedRoot = reachedRoot;
+            State.dagknight.lastBfsMaxQueue = maxQueueSize;
+            State.dagknight.lastAncestorCount = ancestors.length;
 
-            // Debug: track chain walk stats
-            State.dagknight.lastChainWalkSteps = walkSteps;
-            State.dagknight.lastChainOutsideZone = outsideZoneCount;
-            State.dagknight.lastChainStopReason = stopReason;
-
-            return chain;
+            return ancestors;
         }
 
         // fillBoundedGhostdagData: Calculate coloring data for zone blocks with k
@@ -1256,18 +1260,18 @@
             const result = kColouring(zoneBlocks, k);
 
             // Calculate blueWork (dkoder-aligned):
-            // 1. Work of all blocks on selected chain (root → selectedParent)
+            // 1. Work of ALL ancestors of selectedParent in zone (via BFS)
             // 2. Plus work of mergeset_blues
             let blueWork = 0n;
-            let chainCount = 0;
+            let ancestorCount = 0;
 
-            // 1. Add work from selected chain (implicitly blue)
+            // 1. Add work from ALL ancestors (BFS explores all paths in DAG)
             if (result.selectedParent) {
-                const chain = findSelectedChainInZone(root, result.selectedParent, zoneBlocksSet);
-                chainCount = chain.length;
+                const ancestors = findAllAncestorsInZone(root, result.selectedParent, zoneBlocksSet);
+                ancestorCount = ancestors.length;
 
-                for (const chainHash of chain) {
-                    const idx = State.blockHashToIndex.get(chainHash);
+                for (const ancestorHash of ancestors) {
+                    const idx = State.blockHashToIndex.get(ancestorHash);
                     if (idx !== undefined) {
                         const bits = State.blockData.bits[idx];
                         blueWork += calcWork(bits);
@@ -1284,14 +1288,14 @@
                 }
             }
 
-            // Debug: track chain and mergeset counts
-            State.dagknight.lastChainCount = chainCount;
+            // Debug: track ancestor and mergeset counts
+            State.dagknight.lastAncestorCount = ancestorCount;
             State.dagknight.lastMergesetBluesCount = result.mergesetBlues.size;
 
             return {
                 ...result,
                 blueWork,
-                blueCount: chainCount + result.mergesetBlues.size,  // chain + mergeset
+                blueCount: ancestorCount + result.mergesetBlues.size,  // ancestors + mergeset
                 k,
             };
         }
@@ -2474,15 +2478,16 @@
                     if (bluesK0 > 0) {
                         line4 += `(k0:${bluesK0})`;  // Show blues at k=0 for comparison
                     }
-                    line4 += ` chain:${State.dagknight.lastChainCount ?? 0}`;
+                    line4 += ` anc:${State.dagknight.lastAncestorCount ?? 0}`;
                     line4 += ` merge:${State.dagknight.lastMergesetBluesCount ?? 0}`;
                     line4 += ` | col:${State.dagknight.lastColoredCount || 0}`;
                     lines.push(line4);
 
-                    // Line 5: Chain walk debug
-                    let line5 = `walk:${State.dagknight.lastChainWalkSteps ?? 0}steps`;
-                    line5 += ` out:${State.dagknight.lastChainOutsideZone ?? 0}`;
-                    line5 += ` stop:${State.dagknight.lastChainStopReason ?? '?'}`;
+                    // Line 5: BFS ancestor search debug
+                    let line5 = `bfs:${State.dagknight.lastBfsSteps ?? 0}steps`;
+                    line5 += ` out:${State.dagknight.lastBfsOutsideZone ?? 0}`;
+                    line5 += ` root:${State.dagknight.lastBfsReachedRoot ? 'Y' : 'N'}`;
+                    line5 += ` maxQ:${State.dagknight.lastBfsMaxQueue ?? 0}`;
                     lines.push(line5);
 
                     // Line 6: checkBlueCandidate rejection stats
