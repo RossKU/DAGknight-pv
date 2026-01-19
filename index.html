@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v64-bfs-all-ancestors',
+            VERSION: 'v65-dkoder-incremental',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1191,111 +1191,294 @@
             return result;
         }
 
-        // --- Step 4: DagknightExecutor Functions ---
+        // --- Step 4: DagknightExecutor - dkoder-aligned incremental processing ---
 
-        // Helper: Find ALL ancestors of selectedParent within zone using BFS
-        // In DAG, selectedParent has multiple paths to root - we need ALL of them
-        function findAllAncestorsInZone(root, selectedParent, zoneBlocksSet) {
-            const ancestors = [];
-            const visited = new Set();
-            const queue = [selectedParent];
-            let bfsSteps = 0;
-            let outsideZoneCount = 0;
-            let reachedRoot = false;
-            let maxQueueSize = 1;
+        // topologicalSortZone: Sort zone blocks from root to tips (dkoder: topological order)
+        // Uses Kahn's algorithm with in-degree counting
+        function topologicalSortZone(root, zoneBlocks) {
+            const zoneSet = new Set(zoneBlocks);
+            const sorted = [];
+            const inDegree = new Map();  // Count of unprocessed parents in zone
+            const children = new Map();  // Map parent -> children in zone
 
-            // BFS: explore ALL parents, not just selected parent chain
-            while (queue.length > 0) {
-                const current = queue.shift();
-                bfsSteps++;
-
-                // Skip if already visited or is root
-                if (visited.has(current)) continue;
-                if (current === root) {
-                    reachedRoot = true;
-                    continue;
-                }
-                visited.add(current);
-
-                // Only include if in zone
-                if (zoneBlocksSet.has(current)) {
-                    ancestors.push(current);
-                } else {
-                    outsideZoneCount++;
-                }
-
-                // Get ALL parents and add to queue
-                const idx = State.blockHashToIndex.get(current);
+            // Initialize: count in-degrees (parents within zone)
+            for (const hash of zoneBlocks) {
+                const idx = State.blockHashToIndex.get(hash);
                 if (idx === undefined) continue;
 
                 const parents = State.blockData.parentHashes[idx] || [];
+                let zoneParentCount = 0;
+
                 for (const parent of parents) {
-                    if (!visited.has(parent)) {
-                        queue.push(parent);
+                    if (zoneSet.has(parent) || parent === root) {
+                        zoneParentCount++;
+                        // Track children for this parent
+                        if (!children.has(parent)) children.set(parent, []);
+                        children.get(parent).push(hash);
                     }
                 }
 
-                // Track max queue size for debug
-                if (queue.length > maxQueueSize) {
-                    maxQueueSize = queue.length;
+                inDegree.set(hash, zoneParentCount);
+            }
+
+            // Start with blocks whose only zone-parent is root (inDegree from zone = 0 effectively)
+            const queue = [];
+            for (const hash of zoneBlocks) {
+                const deg = inDegree.get(hash) || 0;
+                // Blocks with all parents outside zone (or only root) start first
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx === undefined) continue;
+                const parents = State.blockData.parentHashes[idx] || [];
+                const hasOnlyRootOrOutside = parents.every(p => p === root || !zoneSet.has(p));
+                if (hasOnlyRootOrOutside) {
+                    queue.push(hash);
                 }
             }
 
-            // Debug: track BFS stats
-            State.dagknight.lastBfsSteps = bfsSteps;
-            State.dagknight.lastBfsOutsideZone = outsideZoneCount;
-            State.dagknight.lastBfsReachedRoot = reachedRoot;
-            State.dagknight.lastBfsMaxQueue = maxQueueSize;
-            State.dagknight.lastAncestorCount = ancestors.length;
+            // Process in topological order
+            while (queue.length > 0) {
+                const hash = queue.shift();
+                sorted.push(hash);
 
-            return ancestors;
+                // Decrease in-degree of children
+                const childList = children.get(hash) || [];
+                for (const child of childList) {
+                    const newDeg = (inDegree.get(child) || 1) - 1;
+                    inDegree.set(child, newDeg);
+                    if (newDeg === 0) {
+                        queue.push(child);
+                    }
+                }
+            }
+
+            // Debug stats
+            State.dagknight.lastTopoSortInput = zoneBlocks.length;
+            State.dagknight.lastTopoSortOutput = sorted.length;
+
+            return sorted;
         }
 
-        // fillBoundedGhostdagData: Calculate coloring data for zone blocks with k
-        // blueWork = selected_chain work + mergeset_blues work (dkoder-aligned)
-        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
-            const zoneBlocksSet = new Set(zoneBlocks);
+        // getParentsInZone: Get parents that are in zone or root (dkoder: filter parents)
+        function getParentsInZone(blockHash, zoneSet, root) {
+            const idx = State.blockHashToIndex.get(blockHash);
+            if (idx === undefined) return [];
 
-            // Perform k-colouring on ALL zone blocks
-            const result = kColouring(zoneBlocks, k);
+            const allParents = State.blockData.parentHashes[idx] || [];
+            return allParents.filter(p => zoneSet.has(p) || p === root);
+        }
 
-            // Calculate blueWork (dkoder-aligned):
-            // 1. Work of ALL ancestors of selectedParent in zone (via BFS)
-            // 2. Plus work of mergeset_blues
-            let blueWork = 0n;
-            let ancestorCount = 0;
+        // findSelectedParentFromStore: Find SP using stored blue_work (dkoder: find_selected_parent)
+        function findSelectedParentFromStore(parents, blueWorkStore) {
+            if (parents.length === 0) return null;
+            if (parents.length === 1) return parents[0];
 
-            // 1. Add work from ALL ancestors (BFS explores all paths in DAG)
-            if (result.selectedParent) {
-                const ancestors = findAllAncestorsInZone(root, result.selectedParent, zoneBlocksSet);
-                ancestorCount = ancestors.length;
+            let bestParent = parents[0];
+            let bestWork = blueWorkStore.get(parents[0]) || 0n;
 
-                for (const ancestorHash of ancestors) {
-                    const idx = State.blockHashToIndex.get(ancestorHash);
-                    if (idx !== undefined) {
-                        const bits = State.blockData.bits[idx];
-                        blueWork += calcWork(bits);
+            for (let i = 1; i < parents.length; i++) {
+                const work = blueWorkStore.get(parents[i]) || 0n;
+                if (work > bestWork) {
+                    bestWork = work;
+                    bestParent = parents[i];
+                }
+            }
+
+            return bestParent;
+        }
+
+        // getMergesetBounded: Get mergeset (anticone of SP among zone parents)
+        function getMergesetBounded(selectedParent, parents, blockHash) {
+            const mergeset = [];
+            for (const parent of parents) {
+                if (parent === selectedParent) continue;
+                // In bounded context, we only check among the direct parents
+                // Anticone = not ancestor and not descendant
+                if (!isAncestor(parent, selectedParent, 30) &&
+                    !isAncestor(selectedParent, parent, 30)) {
+                    mergeset.push(parent);
+                }
+            }
+            return sortBlocks(mergeset);
+        }
+
+        // checkBlueCandidateBounded: Check if candidate can be blue using bounded store
+        function checkBlueCandidateBounded(blockHash, candidateHash, k, mergesetBlues, blueStatusStore) {
+            // Check 1: current mergeset blues count <= k
+            if (mergesetBlues.length > k) {
+                return false;
+            }
+
+            // Check 2: candidate's blue anticone size <= k
+            // Count blues in anticone of candidate
+            let candidateAnticoneBlues = 0;
+            for (const blueHash of mergesetBlues) {
+                if (!isAncestor(blueHash, candidateHash, 30) &&
+                    !isAncestor(candidateHash, blueHash, 30)) {
+                    candidateAnticoneBlues++;
+                }
+            }
+            if (candidateAnticoneBlues > k) {
+                return false;
+            }
+
+            // Check 3: each existing blue's anticone with candidate <= k
+            for (const blueHash of mergesetBlues) {
+                let blueAnticoneWithCandidate = 0;
+                // Count: candidate + other mergeset blues in anticone of this blue
+                if (!isAncestor(blueHash, candidateHash, 30) &&
+                    !isAncestor(candidateHash, blueHash, 30)) {
+                    blueAnticoneWithCandidate++;
+                }
+                for (const otherBlue of mergesetBlues) {
+                    if (otherBlue === blueHash) continue;
+                    if (!isAncestor(blueHash, otherBlue, 30) &&
+                        !isAncestor(otherBlue, blueHash, 30)) {
+                        blueAnticoneWithCandidate++;
                     }
                 }
-            }
-
-            // 2. Add work from mergeset blues (k-dependent!)
-            for (const blueHash of result.mergesetBlues) {
-                const idx = State.blockHashToIndex.get(blueHash);
-                if (idx !== undefined) {
-                    const bits = State.blockData.bits[idx];
-                    blueWork += calcWork(bits);
+                if (blueAnticoneWithCandidate > k) {
+                    return false;
                 }
             }
 
-            // Debug: track ancestor and mergeset counts
-            State.dagknight.lastAncestorCount = ancestorCount;
-            State.dagknight.lastMergesetBluesCount = result.mergesetBlues.size;
+            return true;
+        }
+
+        // fillBoundedGhostdagData: dkoder-aligned incremental processing
+        // Process zone blocks in topological order, accumulating blue_work
+        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+            const zoneSet = new Set(zoneBlocks);
+
+            // Step 1: Topological sort (from root towards tips)
+            const sorted = topologicalSortZone(root, zoneBlocks);
+
+            // Step 2: Initialize stores
+            const blueWorkStore = new Map();   // hash -> BigInt blue_work
+            const blueStatusStore = new Map(); // hash -> 'blue' | 'red'
+            const mergesetBluesStore = new Map();  // hash -> array of mergeset blues
+            const mergesetRedsStore = new Map();   // hash -> array of mergeset reds
+            const selectedParentStore = new Map(); // hash -> selected parent
+
+            // Root has 0 blue_work in zone context
+            blueWorkStore.set(root, 0n);
+
+            // Debug counters
+            let totalMergesetBlues = 0;
+            let totalMergesetReds = 0;
+            let blocksProcessed = 0;
+
+            // Step 3: Process each block in topological order
+            for (const blockHash of sorted) {
+                blocksProcessed++;
+
+                // Get parents in zone (or root)
+                const parentsInZone = getParentsInZone(blockHash, zoneSet, root);
+                if (parentsInZone.length === 0) {
+                    // No zone parents - this block is orphaned in zone context
+                    blueWorkStore.set(blockHash, 0n);
+                    blueStatusStore.set(blockHash, 'blue');  // Assume blue if orphaned
+                    continue;
+                }
+
+                // Find selected parent (highest blue_work among parents)
+                const selectedParent = findSelectedParentFromStore(parentsInZone, blueWorkStore);
+                selectedParentStore.set(blockHash, selectedParent);
+
+                // Get mergeset (anticone of SP among zone parents)
+                const mergeset = getMergesetBounded(selectedParent, parentsInZone, blockHash);
+
+                // k-colouring on mergeset
+                const mergesetBlues = [];
+                const mergesetReds = [];
+
+                for (const candidate of mergeset) {
+                    // Early termination: if blues already at k, remaining are red
+                    if (mergesetBlues.length >= k && k > 0) {
+                        mergesetReds.push(candidate);
+                        continue;
+                    }
+
+                    if (checkBlueCandidateBounded(blockHash, candidate, k, mergesetBlues, blueStatusStore)) {
+                        mergesetBlues.push(candidate);
+                        blueStatusStore.set(candidate, 'blue');
+                    } else {
+                        mergesetReds.push(candidate);
+                        blueStatusStore.set(candidate, 'red');
+                    }
+                }
+
+                mergesetBluesStore.set(blockHash, mergesetBlues);
+                mergesetRedsStore.set(blockHash, mergesetReds);
+                totalMergesetBlues += mergesetBlues.length;
+                totalMergesetReds += mergesetReds.length;
+
+                // Calculate blue_work (dkoder formula):
+                // blue_work = SP.blue_work + sum(mergeset_blues work)
+                const spBlueWork = blueWorkStore.get(selectedParent) || 0n;
+                let addedBlueWork = 0n;
+                for (const blueHash of mergesetBlues) {
+                    const idx = State.blockHashToIndex.get(blueHash);
+                    if (idx !== undefined) {
+                        addedBlueWork += calcWork(State.blockData.bits[idx]);
+                    }
+                }
+                const blockBlueWork = spBlueWork + addedBlueWork;
+                blueWorkStore.set(blockHash, blockBlueWork);
+
+                // The block itself is on the selected chain (implicitly blue)
+                blueStatusStore.set(blockHash, 'blue');
+            }
+
+            // Step 4: Get final result from tips
+            // Find the tip with highest blue_work (or first tip if single)
+            let finalBlueWork = 0n;
+            let finalSelectedParent = null;
+            let finalTip = tips[0];
+
+            for (const tip of tips) {
+                const tipBlueWork = blueWorkStore.get(tip) || 0n;
+                if (tipBlueWork > finalBlueWork) {
+                    finalBlueWork = tipBlueWork;
+                    finalTip = tip;
+                }
+            }
+            finalSelectedParent = selectedParentStore.get(finalTip);
+
+            // Collect all blues and reds for coloring display
+            const allMergesetBlues = new Set();
+            const allMergesetReds = new Set();
+            for (const [hash, blues] of mergesetBluesStore) {
+                for (const b of blues) allMergesetBlues.add(b);
+            }
+            for (const [hash, reds] of mergesetRedsStore) {
+                for (const r of reds) allMergesetReds.add(r);
+            }
+
+            // Count total blues (blocks on chain + mergeset blues)
+            let chainBlueCount = 0;
+            for (const [hash, status] of blueStatusStore) {
+                if (status === 'blue' && !allMergesetBlues.has(hash)) {
+                    chainBlueCount++;  // Blue but not from mergeset = on chain
+                }
+            }
+
+            // Debug: track incremental processing stats
+            State.dagknight.lastIncremental = {
+                sorted: sorted.length,
+                processed: blocksProcessed,
+                mergesetBlues: totalMergesetBlues,
+                mergesetReds: totalMergesetReds,
+                chainBlues: chainBlueCount,
+                finalBlueWork: finalBlueWork.toString().length,  // digits
+            };
 
             return {
-                ...result,
-                blueWork,
-                blueCount: ancestorCount + result.mergesetBlues.size,  // ancestors + mergeset
+                selectedParent: finalSelectedParent,
+                mergesetBlues: allMergesetBlues,
+                mergesetReds: allMergesetReds,
+                blueWork: finalBlueWork,
+                blueCount: chainBlueCount + allMergesetBlues.size,
+                blueStatusStore,  // For coloring
                 k,
             };
         }
@@ -2471,33 +2654,38 @@
                     }
                     lines.push(line3);
 
-                    // Line 4: Blue composition (chain + mergeset) with k=0 comparison
-                    const bluesNow = State.dagknight.lastBlueCount ?? 0;
-                    const bluesK0 = State.dagknight.lastBluesAtK0 ?? 0;
-                    let line4 = `blues:${bluesNow}`;
-                    if (bluesK0 > 0) {
-                        line4 += `(k0:${bluesK0})`;  // Show blues at k=0 for comparison
+                    // Line 4: Incremental processing stats (dkoder-aligned)
+                    const inc = State.dagknight.lastIncremental;
+                    if (inc) {
+                        let line4 = `topo:${inc.sorted}/${State.dagknight.lastTopoSortInput ?? 0}`;
+                        line4 += ` chain:${inc.chainBlues}`;
+                        line4 += ` mBlue:${inc.mergesetBlues}`;
+                        line4 += ` mRed:${inc.mergesetReds}`;
+                        line4 += ` | bW:${inc.finalBlueWork}桁`;
+                        lines.push(line4);
+
+                        // Line 5: Blue summary
+                        const bluesNow = State.dagknight.lastBlueCount ?? 0;
+                        const bluesK0 = State.dagknight.lastBluesAtK0 ?? 0;
+                        let line5 = `blues:${bluesNow}`;
+                        if (bluesK0 > 0 && bluesK0 !== bluesNow) {
+                            line5 += `(k0:${bluesK0})`;
+                        }
+                        line5 += ` = chain:${inc.chainBlues} + merge:${inc.mergesetBlues}`;
+                        lines.push(line5);
+                    } else {
+                        // Fallback to old format
+                        const bluesNow = State.dagknight.lastBlueCount ?? 0;
+                        let line4 = `blues:${bluesNow}`;
+                        line4 += ` | col:${State.dagknight.lastColoredCount || 0}`;
+                        lines.push(line4);
                     }
-                    line4 += ` anc:${State.dagknight.lastAncestorCount ?? 0}`;
-                    line4 += ` merge:${State.dagknight.lastMergesetBluesCount ?? 0}`;
-                    line4 += ` | col:${State.dagknight.lastColoredCount || 0}`;
-                    lines.push(line4);
 
-                    // Line 5: BFS ancestor search debug
-                    let line5 = `bfs:${State.dagknight.lastBfsSteps ?? 0}steps`;
-                    line5 += ` out:${State.dagknight.lastBfsOutsideZone ?? 0}`;
-                    line5 += ` root:${State.dagknight.lastBfsReachedRoot ? 'Y' : 'N'}`;
-                    line5 += ` maxQ:${State.dagknight.lastBfsMaxQueue ?? 0}`;
-                    lines.push(line5);
-
-                    // Line 6: checkBlueCandidate rejection stats
+                    // Line 6: Detailed k-colouring stats (if available)
                     const stats = State.dagknight.lastCheckBlueStats;
-                    if (stats) {
+                    if (stats && (stats.check1 > 0 || stats.check2 > 0 || stats.check3 > 0)) {
                         let line6 = `reject: c1:${stats.check1} c2:${stats.check2} c3:${stats.check3}`;
                         line6 += ` pass:${stats.passed}`;
-                        if (State.dagknight.maxAnticoneBlues) {
-                            line6 += ` maxAnti:${State.dagknight.maxAnticoneBlues}`;
-                        }
                         lines.push(line6);
                     }
                 }
