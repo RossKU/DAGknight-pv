@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v61-chain-debug',
+            VERSION: 'v62-k-status',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1285,8 +1285,16 @@
             // Debug: track parent count
             State.dagknight.lastParentCount = subgroup.length;
 
+            // Track blues at k=0 for comparison
+            let bluesAtK0 = 0;
+
             for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
+
+                // Track k=0 blues
+                if (k === 0) {
+                    bluesAtK0 = data.blueCount;
+                }
 
                 // Debug: track zone/blue work and blue count
                 State.dagknight.lastZoneWork = zoneWork.toString();
@@ -1295,6 +1303,8 @@
 
                 if (data.blueWork >= halfZoneWork) {
                     State.dagknight.lastK = k;
+                    State.dagknight.lastKFound = true;  // Condition met!
+                    State.dagknight.lastBluesAtK0 = bluesAtK0;
                     State.dagknight.perf.rank.time += performance.now() - start;
                     return {
                         k,
@@ -1306,7 +1316,9 @@
             // Fallback: use MAX_K (if still not found, something is wrong)
             const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
             State.dagknight.lastK = MAX_K;
+            State.dagknight.lastKFound = false;  // Fallback - condition never met
             State.dagknight.lastBlueCount = fallbackData.blueCount;
+            State.dagknight.lastBluesAtK0 = bluesAtK0;
             State.dagknight.perf.rank.time += performance.now() - start;
             return {
                 k: MAX_K,
@@ -2411,7 +2423,9 @@
                     lines.push(line2);
 
                     // Line 3: zone details
-                    let line3 = `k:${State.dagknight.lastK ?? '-'}`;
+                    const kVal = State.dagknight.lastK ?? '-';
+                    const kStatus = State.dagknight.lastKFound ? '✓' : '(MAX)';
+                    let line3 = `k:${kVal}${kStatus}`;
                     if (State.dagknight.lastZoneBlockCount !== undefined) {
                         const valid = State.dagknight.lastValidBlockCount ?? 0;
                         const skipped = State.dagknight.lastSkippedCount ?? 0;
@@ -2427,11 +2441,16 @@
                     }
                     lines.push(line3);
 
-                    // Line 4: Blue composition (chain + mergeset)
-                    let line4 = `blues:${State.dagknight.lastBlueCount ?? 0}`;
-                    line4 += ` (chain:${State.dagknight.lastChainCount ?? 0}`;
-                    line4 += ` +merge:${State.dagknight.lastMergesetBluesCount ?? 0})`;
-                    line4 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
+                    // Line 4: Blue composition (chain + mergeset) with k=0 comparison
+                    const bluesNow = State.dagknight.lastBlueCount ?? 0;
+                    const bluesK0 = State.dagknight.lastBluesAtK0 ?? 0;
+                    let line4 = `blues:${bluesNow}`;
+                    if (bluesK0 > 0) {
+                        line4 += `(k0:${bluesK0})`;  // Show blues at k=0 for comparison
+                    }
+                    line4 += ` chain:${State.dagknight.lastChainCount ?? 0}`;
+                    line4 += ` merge:${State.dagknight.lastMergesetBluesCount ?? 0}`;
+                    line4 += ` | col:${State.dagknight.lastColoredCount || 0}`;
                     lines.push(line4);
 
                     // Line 5: Chain walk debug
