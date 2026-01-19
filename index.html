@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v52-debug-work',
+            VERSION: 'v53-k-dependent-blueWork',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1143,7 +1143,7 @@
         // --- Step 4: DagknightExecutor Functions ---
 
         // fillBoundedGhostdagData: Calculate coloring data for subgroup with k (dkoder: fill_bounded_ghostdag_data)
-        // Uses cumulative blueWork from selected parent (like dkoder's ghostdag_store.get_blue_work)
+        // blueWork = selected_parent累積 + mergeset_blues の calcWork(bits) (dkoder準拠)
         function fillBoundedGhostdagData(root, subgroup, tips, k) {
             // Get all parents from tips
             const allParents = new Set();
@@ -1156,12 +1156,15 @@
                 }
             }
 
-            // Perform k-colouring (cached)
+            // Perform k-colouring (cached) - k affects how many blues are in mergeset
             const result = kColouring([...allParents], k);
 
-            // Get cumulative blueWork from selected parent (dkoder: ghostdag_store.get_blue_work)
-            // This is the accumulated work of all past blue blocks
+            // Calculate blueWork (dkoder style):
+            // blue_work = get_blue_work(selected_parent) + added_blue_work
+            // where added_blue_work = sum of calc_work(bits) for mergeset_blues
             let blueWork = 0n;
+
+            // 1. Get selected parent's cumulative blue_work
             if (result.selectedParent) {
                 const spIdx = State.blockHashToIndex.get(result.selectedParent);
                 if (spIdx !== undefined) {
@@ -1173,9 +1176,22 @@
                 }
             }
 
+            // 2. Add work from mergeset blues (k-dependent!)
+            // Larger k = more mergeset_blues = larger added_blue_work
+            let addedBlueWork = 0n;
+            for (const blueHash of result.mergesetBlues) {
+                const idx = State.blockHashToIndex.get(blueHash);
+                if (idx !== undefined) {
+                    const bits = State.blockData.bits[idx];
+                    addedBlueWork += calcWork(bits);
+                }
+            }
+            blueWork += addedBlueWork;
+
             return {
                 ...result,
                 blueWork,
+                addedBlueWork,  // For debugging
                 k,
             };
         }
