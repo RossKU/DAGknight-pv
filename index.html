@@ -149,6 +149,7 @@
             border-radius: 2px;
         }
 
+        .color-pending { background: #888888; }
         .color-blue { background: #4A90D9; }
         .color-red { background: #E74C3C; }
         .color-vspc { background: #00FF88; box-shadow: 0 0 8px #00FF88; }
@@ -263,6 +264,7 @@
         </div>
 
         <div id="legend">
+            <div class="item"><div class="color color-pending"></div> Pending</div>
             <div class="item"><div class="color color-blue"></div> Blue Block</div>
             <div class="item"><div class="color color-red"></div> Red Block</div>
             <div class="item"><div class="color color-vspc"></div> Selected Chain</div>
@@ -299,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v38-zorder-fix',
+            VERSION: 'v39-pending-state',
 
             // Display
             MAX_BLOCKS: 500,
@@ -313,6 +315,7 @@
             // Colors
             COLORS: {
                 BACKGROUND: 0x0A0E17,
+                PENDING_BLOCK: 0x888888,  // Gray - not yet confirmed
                 BLUE_BLOCK: 0x4A90D9,
                 RED_BLOCK: 0xE74C3C,
                 SELECTED_CHAIN: 0x00FF88,
@@ -355,6 +358,7 @@
                 color: new Uint32Array(CONFIG.MAX_BLOCKS),
                 size: new Float32Array(CONFIG.MAX_BLOCKS),
                 isBlue: new Uint8Array(CONFIG.MAX_BLOCKS),
+                confirmationState: new Uint8Array(CONFIG.MAX_BLOCKS),  // 0=Pending, 1=Blue, 2=Red
                 daaScore: new Float64Array(CONFIG.MAX_BLOCKS),
                 blueScore: new Float64Array(CONFIG.MAX_BLOCKS),
                 blueWork: new Array(CONFIG.MAX_BLOCKS),  // BigInt as string
@@ -461,17 +465,19 @@
             State.graphics = {
                 edges: new PIXI.Graphics(),
                 chainEdges: new PIXI.Graphics(),  // Selected Chain edges (behind blocks)
+                pendingBlocks: new PIXI.Graphics(),  // Pending blocks (gray, behind blue/red)
                 blueBlocks: new PIXI.Graphics(),
                 redBlocks: new PIXI.Graphics(),
                 lcca: new PIXI.Graphics(),  // LCCA block (on top)
             };
 
             // Add to stage (layered: back to front)
-            State.app.stage.addChild(State.graphics.edges);       // 1. Gray edges (back)
-            State.app.stage.addChild(State.graphics.chainEdges);  // 2. Selected Chain edges
-            State.app.stage.addChild(State.graphics.blueBlocks);  // 3. Blue blocks
-            State.app.stage.addChild(State.graphics.redBlocks);   // 4. Red blocks
-            State.app.stage.addChild(State.graphics.lcca);        // 5. LCCA (front)
+            State.app.stage.addChild(State.graphics.edges);          // 1. Gray edges (back)
+            State.app.stage.addChild(State.graphics.chainEdges);     // 2. Selected Chain edges
+            State.app.stage.addChild(State.graphics.pendingBlocks);  // 3. Pending blocks (gray)
+            State.app.stage.addChild(State.graphics.blueBlocks);     // 4. Blue blocks
+            State.app.stage.addChild(State.graphics.redBlocks);      // 5. Red blocks
+            State.app.stage.addChild(State.graphics.lcca);           // 6. LCCA (front)
 
             // Store viewport dimensions
             State.viewport.width = State.app.screen.width;
@@ -531,7 +537,7 @@
         // DAG Rendering (Optimized: reuse Graphics objects)
         // ------------------------------------------------------------
         function renderDAG() {
-            const { edges, chainEdges, blueBlocks, redBlocks, lcca } = State.graphics;
+            const { edges, chainEdges, pendingBlocks, blueBlocks, redBlocks, lcca } = State.graphics;
 
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
@@ -551,13 +557,14 @@
             // Clear previous frame (reuse same objects)
             edges.clear();
             chainEdges.clear();
+            pendingBlocks.clear();
             blueBlocks.clear();
             redBlocks.clear();
             lcca.clear();
 
             if (State.blockCount === 0) return;
 
-            const { size, isBlue, parentHashes, hashes } = State.blockData;
+            const { size, isBlue, confirmationState, parentHashes, hashes } = State.blockData;
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
@@ -636,13 +643,19 @@
                     // Draw chain blocks larger but still blue
                     blueBlocks.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize);
                 } else {
-                    // Draw regular blocks at normal size
+                    // Draw regular blocks at normal size based on confirmation state
                     const blockSize = size[i] * zoom;
                     const halfSize = blockSize / 2;
+                    const state = confirmationState[i];
 
-                    if (isBlue[i]) {
+                    if (state === 0) {
+                        // Pending (gray)
+                        pendingBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    } else if (state === 1) {
+                        // Blue (confirmed as selected parent)
                         blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
                     } else {
+                        // Red (confirmed but not selected)
                         redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
                     }
                 }
@@ -714,6 +727,7 @@
             }
 
             // Fill all blocks (on top of edges)
+            pendingBlocks.fill({ color: CONFIG.COLORS.PENDING_BLOCK });
             blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
@@ -1429,9 +1443,10 @@
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
             State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
 
-            // Color (default blue, will be updated by DAGknight calculation)
-            State.blockData.color[index] = CONFIG.COLORS.BLUE_BLOCK;
-            State.blockData.isBlue[index] = 1;
+            // Color: Start as Pending (gray), will be confirmed when child arrives
+            State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
+            State.blockData.confirmationState[index] = 0;  // 0 = Pending
+            State.blockData.isBlue[index] = 1;  // Default to blue (will be updated)
             State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
             // Store parent hashes (resolved dynamically in renderDAG)
@@ -1439,6 +1454,41 @@
             const parentsByLevel = blockInfo.header.parentsByLevel || [];
             const parents = parentsByLevel[0] || [];
             State.blockData.parentHashes[index] = parents;
+
+            // Confirm parent blocks: Selected Parent → Blue, others → Red
+            if (parents.length > 0) {
+                // Find Selected Parent (highest blueWork)
+                let selectedParentHash = null;
+                let maxBlueWork = '';
+                for (const parentHash of parents) {
+                    const parentIdx = State.blockHashToIndex.get(parentHash);
+                    if (parentIdx !== undefined) {
+                        const parentBlueWork = State.blockData.blueWork[parentIdx] || '0';
+                        if (parentBlueWork > maxBlueWork) {
+                            maxBlueWork = parentBlueWork;
+                            selectedParentHash = parentHash;
+                        }
+                    }
+                }
+
+                // Update confirmation state for all parents
+                for (const parentHash of parents) {
+                    const parentIdx = State.blockHashToIndex.get(parentHash);
+                    if (parentIdx !== undefined && State.blockData.confirmationState[parentIdx] === 0) {
+                        if (parentHash === selectedParentHash) {
+                            // Selected Parent → Blue
+                            State.blockData.confirmationState[parentIdx] = 1;
+                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
+                            State.blockData.isBlue[parentIdx] = 1;
+                        } else {
+                            // Non-selected parent → Red
+                            State.blockData.confirmationState[parentIdx] = 2;
+                            State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
+                            State.blockData.isBlue[parentIdx] = 0;
+                        }
+                    }
+                }
+            }
 
             // Update ring buffer
             State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
