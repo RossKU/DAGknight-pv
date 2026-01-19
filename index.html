@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v56-zone-scope-fix',
+            VERSION: 'v57-debug-valid-skip',
 
             // Display
             MAX_BLOCKS: 500,
@@ -966,6 +966,8 @@
         function calcConflictZoneWork(genesisHash, subgroupHashes) {
             let totalWork = 0n;
             const visited = new Set();
+            const validBlocks = [];  // Blocks with valid idx
+            let skippedCount = 0;    // Debug: blocks without idx
 
             // BFS from subgroup tips back to genesis
             const queue = [...subgroupHashes];
@@ -977,11 +979,15 @@
                 visited.add(hash);
 
                 const idx = State.blockHashToIndex.get(hash);
-                if (idx === undefined) continue;
+                if (idx === undefined) {
+                    skippedCount++;
+                    continue;
+                }
 
                 // Add this block's individual work (from bits, not cumulative blueWork)
                 const bits = State.blockData.bits[idx];
                 totalWork += calcWork(bits);
+                validBlocks.push(hash);
 
                 // Add parents to queue (if not past genesis)
                 const parents = State.blockData.parentHashes[idx] || [];
@@ -995,11 +1001,13 @@
                 }
             }
 
-            // Debug: track zone block count
+            // Debug: track zone stats
             State.dagknight.lastZoneBlockCount = visited.size;
+            State.dagknight.lastValidBlockCount = validBlocks.length;
+            State.dagknight.lastSkippedCount = skippedCount;
 
-            // Return both work and blocks for consistent blueWork calculation
-            return { zoneWork: totalWork, zoneBlocks: [...visited] };
+            // Return only valid blocks for kColouring
+            return { zoneWork: totalWork, zoneBlocks: validBlocks };
         }
 
         // orderedMergesetWithoutSelectedParent: Get mergeset in topological order (dkoder: ordered_mergeset_without_selected_parent)
@@ -2303,15 +2311,17 @@
                         const met = bw >= halfZw ? '✓' : '✗';
                         line2 += ` | bW>=zW/2: ${met}`;
                     }
-                    // Zone block count and blue count
+                    // Zone block count: visited / valid / skipped
                     if (State.dagknight.lastZoneBlockCount !== undefined) {
-                        line2 += ` | zone:${State.dagknight.lastZoneBlockCount}blks`;
+                        const valid = State.dagknight.lastValidBlockCount ?? 0;
+                        const skipped = State.dagknight.lastSkippedCount ?? 0;
+                        line2 += ` | zone:${valid}/${State.dagknight.lastZoneBlockCount}`;
+                        if (skipped > 0) {
+                            line2 += `(skip:${skipped})`;
+                        }
                     }
                     if (State.dagknight.lastBlueCount !== undefined) {
                         line2 += ` blues:${State.dagknight.lastBlueCount}`;
-                    }
-                    if (State.dagknight.lastParentCount !== undefined) {
-                        line2 += ` parents:${State.dagknight.lastParentCount}`;
                     }
                     lines.push(line2);
 
