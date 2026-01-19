@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v65-dkoder-incremental',
+            VERSION: 'v66-dkoder-heap-root',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1193,78 +1193,21 @@
 
         // --- Step 4: DagknightExecutor - dkoder-aligned incremental processing ---
 
-        // topologicalSortZone: Sort zone blocks from root to tips (dkoder: topological order)
-        // Uses Kahn's algorithm with in-degree counting
-        function topologicalSortZone(root, zoneBlocks) {
-            const zoneSet = new Set(zoneBlocks);
-            const sorted = [];
-            const inDegree = new Map();  // Count of unprocessed parents in zone
-            const children = new Map();  // Map parent -> children in zone
-
-            // Initialize: count in-degrees (parents within zone)
-            for (const hash of zoneBlocks) {
-                const idx = State.blockHashToIndex.get(hash);
-                if (idx === undefined) continue;
-
-                const parents = State.blockData.parentHashes[idx] || [];
-                let zoneParentCount = 0;
-
-                for (const parent of parents) {
-                    if (zoneSet.has(parent) || parent === root) {
-                        zoneParentCount++;
-                        // Track children for this parent
-                        if (!children.has(parent)) children.set(parent, []);
-                        children.get(parent).push(hash);
-                    }
-                }
-
-                inDegree.set(hash, zoneParentCount);
-            }
-
-            // Start with blocks whose only zone-parent is root (inDegree from zone = 0 effectively)
-            const queue = [];
-            for (const hash of zoneBlocks) {
-                const deg = inDegree.get(hash) || 0;
-                // Blocks with all parents outside zone (or only root) start first
-                const idx = State.blockHashToIndex.get(hash);
-                if (idx === undefined) continue;
-                const parents = State.blockData.parentHashes[idx] || [];
-                const hasOnlyRootOrOutside = parents.every(p => p === root || !zoneSet.has(p));
-                if (hasOnlyRootOrOutside) {
-                    queue.push(hash);
-                }
-            }
-
-            // Process in topological order
-            while (queue.length > 0) {
-                const hash = queue.shift();
-                sorted.push(hash);
-
-                // Decrease in-degree of children
-                const childList = children.get(hash) || [];
-                for (const child of childList) {
-                    const newDeg = (inDegree.get(child) || 1) - 1;
-                    inDegree.set(child, newDeg);
-                    if (newDeg === 0) {
-                        queue.push(child);
-                    }
-                }
-            }
-
-            // Debug stats
-            State.dagknight.lastTopoSortInput = zoneBlocks.length;
-            State.dagknight.lastTopoSortOutput = sorted.length;
-
-            return sorted;
+        // getBlueWorkForSort: Get blue_work for sorting (from global GHOSTDAG data)
+        function getBlueWorkForSort(hash) {
+            const idx = State.blockHashToIndex.get(hash);
+            if (idx === undefined) return 0n;
+            // Use the stored blueWork from GHOSTDAG (not zone-local)
+            return BigInt(State.blockData.blueWork?.[idx] || 0);
         }
 
-        // getParentsInZone: Get parents that are in zone or root (dkoder: filter parents)
-        function getParentsInZone(blockHash, zoneSet, root) {
+        // getParentsInStore: Get parents that are already in blueWorkStore (dkoder approach)
+        function getParentsInStore(blockHash, blueWorkStore) {
             const idx = State.blockHashToIndex.get(blockHash);
             if (idx === undefined) return [];
 
             const allParents = State.blockData.parentHashes[idx] || [];
-            return allParents.filter(p => zoneSet.has(p) || p === root);
+            return allParents.filter(p => blueWorkStore.has(p));
         }
 
         // findSelectedParentFromStore: Find SP using stored blue_work (dkoder: find_selected_parent)
@@ -1345,92 +1288,135 @@
         }
 
         // fillBoundedGhostdagData: dkoder-aligned incremental processing
-        // Process zone blocks in topological order, accumulating blue_work
+        // Process zone blocks using heap-based topological order (by blue_work)
         function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
             const zoneSet = new Set(zoneBlocks);
 
-            // Step 1: Topological sort (from root towards tips)
-            const sorted = topologicalSortZone(root, zoneBlocks);
-
-            // Step 2: Initialize stores
+            // Step 1: Initialize stores
             const blueWorkStore = new Map();   // hash -> BigInt blue_work
             const blueStatusStore = new Map(); // hash -> 'blue' | 'red'
             const mergesetBluesStore = new Map();  // hash -> array of mergeset blues
             const mergesetRedsStore = new Map();   // hash -> array of mergeset reds
             const selectedParentStore = new Map(); // hash -> selected parent
 
-            // Root has 0 blue_work in zone context
+            // dkoder: Pre-insert root into store with 0 blue_work
+            // This allows blocks with root as parent to be processed
             blueWorkStore.set(root, 0n);
+            blueStatusStore.set(root, 'blue');
+
+            // Step 2: Sort zone blocks by blue_work (ascending) - simulates heap
+            const sortedByWork = [...zoneBlocks].sort((a, b) => {
+                const workA = getBlueWorkForSort(a);
+                const workB = getBlueWorkForSort(b);
+                if (workA < workB) return -1;
+                if (workA > workB) return 1;
+                return 0;
+            });
 
             // Debug counters
             let totalMergesetBlues = 0;
             let totalMergesetReds = 0;
             let blocksProcessed = 0;
+            let skippedBlocks = 0;
+            let iterations = 0;
 
-            // Step 3: Process each block in topological order
-            for (const blockHash of sorted) {
-                blocksProcessed++;
+            // Step 3: Process blocks - repeat until all are processed
+            // dkoder uses heap; we iterate sorted list and skip if parents not ready
+            const pending = new Set(sortedByWork);
+            const maxIterations = zoneBlocks.length * 2;  // Safety limit
 
-                // Get parents in zone (or root)
-                const parentsInZone = getParentsInZone(blockHash, zoneSet, root);
-                if (parentsInZone.length === 0) {
-                    // No zone parents - this block is orphaned in zone context
-                    blueWorkStore.set(blockHash, 0n);
-                    blueStatusStore.set(blockHash, 'blue');  // Assume blue if orphaned
-                    continue;
-                }
+            while (pending.size > 0 && iterations < maxIterations) {
+                iterations++;
+                let processedThisRound = 0;
 
-                // Find selected parent (highest blue_work among parents)
-                const selectedParent = findSelectedParentFromStore(parentsInZone, blueWorkStore);
-                selectedParentStore.set(blockHash, selectedParent);
+                for (const blockHash of sortedByWork) {
+                    if (!pending.has(blockHash)) continue;
 
-                // Get mergeset (anticone of SP among zone parents)
-                const mergeset = getMergesetBounded(selectedParent, parentsInZone, blockHash);
+                    // dkoder: Get parents that are already in store
+                    const parentsInStore = getParentsInStore(blockHash, blueWorkStore);
 
-                // k-colouring on mergeset
-                const mergesetBlues = [];
-                const mergesetReds = [];
+                    // Get ALL parents for this block
+                    const idx = State.blockHashToIndex.get(blockHash);
+                    if (idx === undefined) {
+                        pending.delete(blockHash);
+                        continue;
+                    }
+                    const allParents = State.blockData.parentHashes[idx] || [];
 
-                for (const candidate of mergeset) {
-                    // Early termination: if blues already at k, remaining are red
-                    if (mergesetBlues.length >= k && k > 0) {
-                        mergesetReds.push(candidate);
+                    // Filter to zone-relevant parents (in zone or root)
+                    const zoneParents = allParents.filter(p => zoneSet.has(p) || p === root);
+
+                    // Skip if not all zone parents are in store yet
+                    if (parentsInStore.length < zoneParents.length) {
+                        skippedBlocks++;
                         continue;
                     }
 
-                    if (checkBlueCandidateBounded(blockHash, candidate, k, mergesetBlues, blueStatusStore)) {
-                        mergesetBlues.push(candidate);
-                        blueStatusStore.set(candidate, 'blue');
-                    } else {
-                        mergesetReds.push(candidate);
-                        blueStatusStore.set(candidate, 'red');
+                    // All zone parents are ready - process this block
+                    pending.delete(blockHash);
+                    blocksProcessed++;
+                    processedThisRound++;
+
+                    if (parentsInStore.length === 0) {
+                        // No parents in store - orphaned in zone context
+                        blueWorkStore.set(blockHash, 0n);
+                        blueStatusStore.set(blockHash, 'blue');
+                        continue;
                     }
+
+                    // Find selected parent (highest blue_work among parents in store)
+                    const selectedParent = findSelectedParentFromStore(parentsInStore, blueWorkStore);
+                    selectedParentStore.set(blockHash, selectedParent);
+
+                    // Get mergeset (anticone of SP among parents in store)
+                    const mergeset = getMergesetBounded(selectedParent, parentsInStore, blockHash);
+
+                    // k-colouring on mergeset
+                    const mergesetBlues = [];
+                    const mergesetReds = [];
+
+                    for (const candidate of mergeset) {
+                        if (mergesetBlues.length >= k && k > 0) {
+                            mergesetReds.push(candidate);
+                            continue;
+                        }
+
+                        if (checkBlueCandidateBounded(blockHash, candidate, k, mergesetBlues, blueStatusStore)) {
+                            mergesetBlues.push(candidate);
+                            blueStatusStore.set(candidate, 'blue');
+                        } else {
+                            mergesetReds.push(candidate);
+                            blueStatusStore.set(candidate, 'red');
+                        }
+                    }
+
+                    mergesetBluesStore.set(blockHash, mergesetBlues);
+                    mergesetRedsStore.set(blockHash, mergesetReds);
+                    totalMergesetBlues += mergesetBlues.length;
+                    totalMergesetReds += mergesetReds.length;
+
+                    // Calculate blue_work (dkoder formula):
+                    // blue_work = SP.blue_work + sum(mergeset_blues work)
+                    const spBlueWork = blueWorkStore.get(selectedParent) || 0n;
+                    let addedBlueWork = 0n;
+                    for (const blueHash of mergesetBlues) {
+                        const bidx = State.blockHashToIndex.get(blueHash);
+                        if (bidx !== undefined) {
+                            addedBlueWork += calcWork(State.blockData.bits[bidx]);
+                        }
+                    }
+                    const blockBlueWork = spBlueWork + addedBlueWork;
+                    blueWorkStore.set(blockHash, blockBlueWork);
+
+                    // The block itself is on the selected chain (implicitly blue)
+                    blueStatusStore.set(blockHash, 'blue');
                 }
 
-                mergesetBluesStore.set(blockHash, mergesetBlues);
-                mergesetRedsStore.set(blockHash, mergesetReds);
-                totalMergesetBlues += mergesetBlues.length;
-                totalMergesetReds += mergesetReds.length;
-
-                // Calculate blue_work (dkoder formula):
-                // blue_work = SP.blue_work + sum(mergeset_blues work)
-                const spBlueWork = blueWorkStore.get(selectedParent) || 0n;
-                let addedBlueWork = 0n;
-                for (const blueHash of mergesetBlues) {
-                    const idx = State.blockHashToIndex.get(blueHash);
-                    if (idx !== undefined) {
-                        addedBlueWork += calcWork(State.blockData.bits[idx]);
-                    }
-                }
-                const blockBlueWork = spBlueWork + addedBlueWork;
-                blueWorkStore.set(blockHash, blockBlueWork);
-
-                // The block itself is on the selected chain (implicitly blue)
-                blueStatusStore.set(blockHash, 'blue');
+                // If no progress, break to avoid infinite loop
+                if (processedThisRound === 0) break;
             }
 
             // Step 4: Get final result from tips
-            // Find the tip with highest blue_work (or first tip if single)
             let finalBlueWork = 0n;
             let finalSelectedParent = null;
             let finalTip = tips[0];
@@ -1464,8 +1450,10 @@
 
             // Debug: track incremental processing stats
             State.dagknight.lastIncremental = {
-                sorted: sorted.length,
+                input: zoneBlocks.length,
                 processed: blocksProcessed,
+                pending: pending.size,
+                iterations: iterations,
                 mergesetBlues: totalMergesetBlues,
                 mergesetReds: totalMergesetReds,
                 chainBlues: chainBlueCount,
@@ -2657,21 +2645,16 @@
                     // Line 4: Incremental processing stats (dkoder-aligned)
                     const inc = State.dagknight.lastIncremental;
                     if (inc) {
-                        let line4 = `topo:${inc.sorted}/${State.dagknight.lastTopoSortInput ?? 0}`;
-                        line4 += ` chain:${inc.chainBlues}`;
-                        line4 += ` mBlue:${inc.mergesetBlues}`;
-                        line4 += ` mRed:${inc.mergesetReds}`;
+                        let line4 = `proc:${inc.processed}/${inc.input}`;
+                        if (inc.pending > 0) line4 += `(pend:${inc.pending})`;
+                        line4 += ` iter:${inc.iterations}`;
                         line4 += ` | bW:${inc.finalBlueWork}桁`;
                         lines.push(line4);
 
-                        // Line 5: Blue summary
+                        // Line 5: Blue composition
+                        let line5 = `chain:${inc.chainBlues} mBlue:${inc.mergesetBlues} mRed:${inc.mergesetReds}`;
                         const bluesNow = State.dagknight.lastBlueCount ?? 0;
-                        const bluesK0 = State.dagknight.lastBluesAtK0 ?? 0;
-                        let line5 = `blues:${bluesNow}`;
-                        if (bluesK0 > 0 && bluesK0 !== bluesNow) {
-                            line5 += `(k0:${bluesK0})`;
-                        }
-                        line5 += ` = chain:${inc.chainBlues} + merge:${inc.mergesetBlues}`;
+                        line5 += ` | total:${bluesNow}`;
                         lines.push(line5);
                     } else {
                         // Fallback to old format
