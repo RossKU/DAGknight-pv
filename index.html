@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v57-debug-valid-skip',
+            VERSION: 'v58-debug-flow',
 
             // Display
             MAX_BLOCKS: 500,
@@ -968,9 +968,14 @@
             const visited = new Set();
             const validBlocks = [];  // Blocks with valid idx
             let skippedCount = 0;    // Debug: blocks without idx
+            let firstBitsValues = []; // Debug: first few bits values
 
             // BFS from subgroup tips back to genesis
             const queue = [...subgroupHashes];
+
+            // Debug: track input
+            State.dagknight.lastSubgroupSize = subgroupHashes.length;
+            State.dagknight.lastGenesisExists = State.blockHashToIndex.has(genesisHash);
 
             while (queue.length > 0) {
                 const hash = queue.shift();
@@ -986,8 +991,14 @@
 
                 // Add this block's individual work (from bits, not cumulative blueWork)
                 const bits = State.blockData.bits[idx];
-                totalWork += calcWork(bits);
+                const work = calcWork(bits);
+                totalWork += work;
                 validBlocks.push(hash);
+
+                // Debug: track first few bits values
+                if (firstBitsValues.length < 3) {
+                    firstBitsValues.push({ bits, work: work.toString().length });
+                }
 
                 // Add parents to queue (if not past genesis)
                 const parents = State.blockData.parentHashes[idx] || [];
@@ -1005,6 +1016,8 @@
             State.dagknight.lastZoneBlockCount = visited.size;
             State.dagknight.lastValidBlockCount = validBlocks.length;
             State.dagknight.lastSkippedCount = skippedCount;
+            State.dagknight.lastFirstBits = firstBitsValues;
+            State.dagknight.lastTotalWorkDigits = totalWork > 0n ? totalWork.toString().length : 0;
 
             // Return only valid blocks for kColouring
             return { zoneWork: totalWork, zoneBlocks: validBlocks };
@@ -1238,18 +1251,40 @@
 
         // dagknight: Main parent selection (dkoder: dagknight)
         function dagknight(parentHashes) {
-            if (!parentHashes || parentHashes.length === 0) return null;
-            if (parentHashes.length === 1) return parentHashes[0];
+            // Debug: track early return reason
+            State.dagknight.lastEarlyReturn = null;
+            State.dagknight.lastParentHashCount = parentHashes?.length || 0;
+
+            if (!parentHashes || parentHashes.length === 0) {
+                State.dagknight.lastEarlyReturn = 'no-parents';
+                return null;
+            }
+            if (parentHashes.length === 1) {
+                State.dagknight.lastEarlyReturn = 'single-parent';
+                return parentHashes[0];
+            }
 
             // Step 1: Find conflict genesis (LCCA)
             const conflictGenesis = commonChainAncestor(parentHashes);
-            if (!conflictGenesis) return findSelectedParent(parentHashes);
+            State.dagknight.lastConflictGenesis = conflictGenesis ? 'found' : 'null';
+            if (!conflictGenesis) {
+                State.dagknight.lastEarlyReturn = 'no-genesis';
+                return findSelectedParent(parentHashes);
+            }
 
             // Step 2: Calculate zone work AND get zone blocks
             const { zoneWork, zoneBlocks } = calcConflictZoneWork(conflictGenesis, parentHashes);
-            if (zoneWork === 0n) return findSelectedParent(parentHashes);
+            // Debug: store actual zoneWork value
+            State.dagknight.lastZoneWorkRaw = zoneWork.toString();
+            State.dagknight.lastZoneBlocksLen = zoneBlocks.length;
+
+            if (zoneWork === 0n) {
+                State.dagknight.lastEarlyReturn = 'zoneWork=0';
+                return findSelectedParent(parentHashes);
+            }
 
             // Step 3: Rank using zone blocks (same blocks used for zoneWork)
+            State.dagknight.lastEarlyReturn = 'rank-called';
             const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
 
             // Return selected parent from winning subgroup
@@ -2296,41 +2331,39 @@
                 }
                 lines.push(line1);
 
-                // Line 2: k calculation details
+                // Line 2: dagknight flow debug
                 if (State.debug && !State.debug.error) {
-                    let line2 = `k:${State.dagknight.lastK ?? '-'}`;
-                    // Zone and blue work comparison
-                    if (State.dagknight.lastZoneWork && State.dagknight.lastBlueWork) {
-                        const zw = BigInt(State.dagknight.lastZoneWork);
-                        const bw = BigInt(State.dagknight.lastBlueWork);
-                        const zwExp = zw > 0n ? zw.toString().length : 0;
-                        const bwExp = bw > 0n ? bw.toString().length : 0;
-                        line2 += ` | zoneWork:${zwExp}桁 blueWork:${bwExp}桁`;
-                        // Show if condition is met
-                        const halfZw = zw / 2n;
-                        const met = bw >= halfZw ? '✓' : '✗';
-                        line2 += ` | bW>=zW/2: ${met}`;
-                    }
-                    // Zone block count: visited / valid / skipped
+                    let line2 = `ret:${State.dagknight.lastEarlyReturn ?? '?'}`;
+                    line2 += ` | parents:${State.dagknight.lastParentHashCount ?? 0}`;
+                    line2 += ` genesis:${State.dagknight.lastConflictGenesis ?? '?'}`;
+                    line2 += ` | zW:${State.dagknight.lastTotalWorkDigits ?? 0}桁`;
+                    line2 += ` zBlks:${State.dagknight.lastZoneBlocksLen ?? 0}`;
+                    lines.push(line2);
+
+                    // Line 3: zone details
+                    let line3 = `k:${State.dagknight.lastK ?? '-'}`;
                     if (State.dagknight.lastZoneBlockCount !== undefined) {
                         const valid = State.dagknight.lastValidBlockCount ?? 0;
                         const skipped = State.dagknight.lastSkippedCount ?? 0;
-                        line2 += ` | zone:${valid}/${State.dagknight.lastZoneBlockCount}`;
+                        line3 += ` | zone:${valid}/${State.dagknight.lastZoneBlockCount}`;
                         if (skipped > 0) {
-                            line2 += `(skip:${skipped})`;
+                            line3 += `(skip:${skipped})`;
                         }
                     }
-                    if (State.dagknight.lastBlueCount !== undefined) {
-                        line2 += ` blues:${State.dagknight.lastBlueCount}`;
+                    // Show first bits values
+                    if (State.dagknight.lastFirstBits?.length > 0) {
+                        const fb = State.dagknight.lastFirstBits[0];
+                        line3 += ` | 1st bits:${fb.bits ? '0x' + fb.bits.toString(16) : 'null'} w:${fb.work}桁`;
                     }
-                    lines.push(line2);
-
-                    // Line 3: Cache and coloring
-                    let line3 = `cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
-                    line3 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
-                    const firstBits = State.blockData.bits[0] || 0;
-                    line3 += ` | bits:${firstBits ? '0x' + firstBits.toString(16) : 'none'}`;
                     lines.push(line3);
+
+                    // Line 4: Cache and coloring
+                    let line4 = `cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
+                    line4 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
+                    if (State.dagknight.lastBlueCount !== undefined) {
+                        line4 += ` blues:${State.dagknight.lastBlueCount}`;
+                    }
+                    lines.push(line4);
                 }
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
