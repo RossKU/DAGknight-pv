@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v49-bits-display',
+            VERSION: 'v50-unified-scale',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1143,6 +1143,7 @@
         // --- Step 4: DagknightExecutor Functions ---
 
         // fillBoundedGhostdagData: Calculate coloring data for subgroup with k (dkoder: fill_bounded_ghostdag_data)
+        // Uses calcWork(bits) for consistent scale with zoneWork
         function fillBoundedGhostdagData(root, subgroup, tips, k) {
             // Get all parents from tips
             const allParents = new Set();
@@ -1158,24 +1159,23 @@
             // Perform k-colouring
             const result = kColouring([...allParents], k);
 
-            // Calculate total blueWork for this subgroup
+            // Calculate total blueWork using calcWork(bits) - same scale as zoneWork
             let blueWork = 0n;
             if (result.selectedParent) {
                 const spIdx = State.blockHashToIndex.get(result.selectedParent);
                 if (spIdx !== undefined) {
-                    try {
-                        blueWork = BigInt('0x' + (State.blockData.blueWork[spIdx] || '0'));
-                    } catch (e) {}
+                    // Use calcWork(bits) instead of cumulative blueWork
+                    const bits = State.blockData.bits[spIdx];
+                    blueWork = calcWork(bits);
                 }
             }
 
-            // Add blueWork from mergeset blues
+            // Add work from mergeset blues
             for (const blueHash of result.mergesetBlues) {
                 const idx = State.blockHashToIndex.get(blueHash);
                 if (idx !== undefined) {
-                    try {
-                        blueWork += BigInt('0x' + (State.blockData.blueWork[idx] || '0'));
-                    } catch (e) {}
+                    const bits = State.blockData.bits[idx];
+                    blueWork += calcWork(bits);
                 }
             }
 
