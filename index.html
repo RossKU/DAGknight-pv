@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v53-k-dependent-blueWork',
+            VERSION: 'v54-zone-local-blueWork',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1143,7 +1143,8 @@
         // --- Step 4: DagknightExecutor Functions ---
 
         // fillBoundedGhostdagData: Calculate coloring data for subgroup with k (dkoder: fill_bounded_ghostdag_data)
-        // blueWork = selected_parent累積 + mergeset_blues の calcWork(bits) (dkoder準拠)
+        // blueWork = zone内のblue blocksのcalcWork(bits)の合計（累積を使わない）
+        // これによりkの変化がblueWorkに適切に反映される
         function fillBoundedGhostdagData(root, subgroup, tips, k) {
             // Get all parents from tips
             const allParents = new Set();
@@ -1159,39 +1160,35 @@
             // Perform k-colouring (cached) - k affects how many blues are in mergeset
             const result = kColouring([...allParents], k);
 
-            // Calculate blueWork (dkoder style):
-            // blue_work = get_blue_work(selected_parent) + added_blue_work
-            // where added_blue_work = sum of calc_work(bits) for mergeset_blues
+            // Calculate blueWork as sum of calcWork(bits) for BLUE blocks only
+            // NO cumulative - just the zone's blue blocks
+            // This makes blueWork properly k-dependent:
+            //   k=0: few blues → small blueWork
+            //   k=18: many blues → large blueWork
             let blueWork = 0n;
 
-            // 1. Get selected parent's cumulative blue_work
+            // 1. Add selected parent's work (it's always blue)
             if (result.selectedParent) {
                 const spIdx = State.blockHashToIndex.get(result.selectedParent);
                 if (spIdx !== undefined) {
-                    try {
-                        blueWork = BigInt('0x' + (State.blockData.blueWork[spIdx] || '0'));
-                    } catch (e) {
-                        blueWork = 0n;
-                    }
+                    const bits = State.blockData.bits[spIdx];
+                    blueWork += calcWork(bits);
                 }
             }
 
             // 2. Add work from mergeset blues (k-dependent!)
-            // Larger k = more mergeset_blues = larger added_blue_work
-            let addedBlueWork = 0n;
             for (const blueHash of result.mergesetBlues) {
                 const idx = State.blockHashToIndex.get(blueHash);
                 if (idx !== undefined) {
                     const bits = State.blockData.bits[idx];
-                    addedBlueWork += calcWork(bits);
+                    blueWork += calcWork(bits);
                 }
             }
-            blueWork += addedBlueWork;
 
             return {
                 ...result,
                 blueWork,
-                addedBlueWork,  // For debugging
+                blueCount: 1 + result.mergesetBlues.size,  // For debugging
                 k,
             };
         }
