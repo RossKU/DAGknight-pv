@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v45-kCol-cache',
+            VERSION: 'v46-calcWork-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -362,6 +362,7 @@
                 daaScore: new Float64Array(CONFIG.MAX_BLOCKS),
                 blueScore: new Float64Array(CONFIG.MAX_BLOCKS),
                 blueWork: new Array(CONFIG.MAX_BLOCKS),  // BigInt as string
+                bits: new Uint32Array(CONFIG.MAX_BLOCKS),  // PoW difficulty bits
             },
             blockCount: 0,
             blockHashToIndex: new Map(),
@@ -925,7 +926,42 @@
             return null;
         }
 
-        // calcConflictZoneWork: Calculate total blueWork in conflict zone (dkoder: calc_conflict_zone_work)
+        // calcWork: Calculate PoW work from difficulty bits (dkoder: calc_work)
+        // work ≈ 2^256 / (target + 1)
+        function calcWork(bits) {
+            if (!bits || bits === 0) return 1n;  // Fallback to 1 if no bits
+
+            // Decode compact target bits (Bitcoin-style)
+            // bits = 0x1e7fffff → exponent=0x1e, mantissa=0x7fffff
+            const exponent = bits >> 24;
+            const mantissa = bits & 0x007fffff;
+
+            if (exponent === 0 || mantissa === 0) return 1n;
+
+            // target = mantissa × 2^(8 × (exponent - 3))
+            // For small exponents, this is a small number
+            // For large exponents, this is a large number
+            const shift = 8 * (exponent - 3);
+
+            // Calculate target as BigInt
+            let target;
+            if (shift >= 0) {
+                target = BigInt(mantissa) << BigInt(shift);
+            } else {
+                target = BigInt(mantissa) >> BigInt(-shift);
+            }
+
+            if (target === 0n) return 1n;
+
+            // work = 2^256 / (target + 1)
+            // Since 2^256 is huge, we use a simplified approximation
+            // For visualization purposes, we can use 2^64 / target as proxy
+            const work = (1n << 64n) / (target + 1n);
+            return work > 0n ? work : 1n;
+        }
+
+        // calcConflictZoneWork: Calculate total work in conflict zone (dkoder: calc_conflict_zone_work)
+        // Uses calcWork(bits) instead of cumulative blueWork
         function calcConflictZoneWork(genesisHash, subgroupHashes) {
             let totalWork = 0n;
             const visited = new Set();
@@ -942,13 +978,9 @@
                 const idx = State.blockHashToIndex.get(hash);
                 if (idx === undefined) continue;
 
-                // Add this block's blueWork
-                const workStr = State.blockData.blueWork[idx] || '0';
-                try {
-                    totalWork += BigInt('0x' + workStr);
-                } catch (e) {
-                    // Invalid hex, skip
-                }
+                // Add this block's individual work (from bits, not cumulative blueWork)
+                const bits = State.blockData.bits[idx];
+                totalWork += calcWork(bits);
 
                 // Add parents to queue (if not past genesis)
                 const parents = State.blockData.parentHashes[idx] || [];
@@ -2098,9 +2130,10 @@
             State.blockData.targetX[index] = State.blockData.x[index];
             State.blockData.linearIndex[index] = -1;  // Not linearized yet
 
-            // Store blueScore and blueWork for DAGknight calculation
+            // Store blueScore, blueWork, and bits for DAGknight calculation
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
             State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
+            State.blockData.bits[index] = Number(blockInfo.header.bits || 0);
 
             // Color: Start as Pending (gray), will be confirmed when child arrives
             State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
