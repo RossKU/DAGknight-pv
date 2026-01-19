@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v43-hasChild-coloring',
+            VERSION: 'v44-dynamic-k',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1855,7 +1855,7 @@
                     calcTime: calcTime.toFixed(1),
                 };
 
-                // --- DAGknight Coloring: Update Pending blocks ---
+                // --- DAGknight Coloring: Dynamic k-search with caching ---
                 // Reset perf counters for this calculation cycle
                 const dk = State.dagknight.perf;
                 dk.isAncestor = { calls: 0, time: 0 };
@@ -1865,21 +1865,87 @@
 
                 const { PENDING, BLUE, RED } = State.dagknight;
                 let coloredCount = 0;
+                const processedParentSets = new Set();  // Cache: avoid duplicate calculations
 
-                // Scan ALL blocks and color those that have children (hasChild)
-                // hasChild = confirmed (someone selected this block as parent)
-                // Under k=18, almost all blocks become Blue (Red is very rare)
+                // Process from tips backwards - each tip confirms its parents
+                // Limit processing to avoid performance issues
+                const tipsToProcess = tips.slice(0, 20);  // Process up to 20 tips
+
+                for (const tipHash of tipsToProcess) {
+                    const tipIdx = State.blockHashToIndex.get(tipHash);
+                    if (tipIdx === undefined) continue;
+
+                    const parents = State.blockData.parentHashes[tipIdx] || [];
+                    if (parents.length === 0) continue;
+
+                    // Cache key: sorted parent hashes
+                    const parentsKey = parents.slice().sort().join(',');
+                    if (processedParentSets.has(parentsKey)) continue;
+                    processedParentSets.add(parentsKey);
+
+                    // DAGknight: Dynamic k-search using rank()
+                    const conflictGenesis = commonChainAncestor(parents);
+                    let coloringResult;
+                    let usedK = 18;
+
+                    if (conflictGenesis && parents.length > 1) {
+                        // Calculate zone work
+                        const zoneWork = calcConflictZoneWork(conflictGenesis, parents);
+
+                        if (zoneWork > 0n) {
+                            // Dynamic k search: find minimal k where blueWork >= zoneWork/2
+                            const rankResult = rank(conflictGenesis, parents, zoneWork, parents);
+                            coloringResult = rankResult.subgroupVirtual;
+                            usedK = rankResult.k;
+                        } else {
+                            // Fallback: k=18
+                            coloringResult = kColouring(parents, 18);
+                        }
+                    } else {
+                        // Single parent or no LCCA: k=18
+                        coloringResult = kColouring(parents, 18);
+                    }
+
+                    // Update confirmation state for parents
+                    for (const parentHash of parents) {
+                        const parentIdx = State.blockHashToIndex.get(parentHash);
+                        if (parentIdx === undefined) continue;
+
+                        // Only update if still pending
+                        if (State.blockData.confirmationState[parentIdx] !== PENDING) continue;
+
+                        // Determine blue or red based on DAGknight coloring
+                        if (parentHash === coloringResult.selectedParent ||
+                            coloringResult.mergesetBlues.has(parentHash)) {
+                            State.blockData.confirmationState[parentIdx] = BLUE;
+                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
+                            State.blockData.isBlue[parentIdx] = 1;
+                        } else if (coloringResult.mergesetReds.has(parentHash)) {
+                            State.blockData.confirmationState[parentIdx] = RED;
+                            State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
+                            State.blockData.isBlue[parentIdx] = 0;
+                        } else {
+                            // Ancestor of selected parent - blue
+                            State.blockData.confirmationState[parentIdx] = BLUE;
+                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
+                            State.blockData.isBlue[parentIdx] = 1;
+                        }
+                        coloredCount++;
+                    }
+
+                    // Store the k value used
+                    State.dagknight.coloringK.set(tipHash, usedK);
+                }
+
+                // Also color any remaining hasChild blocks that weren't processed
+                // (older blocks not reachable from current tips)
                 for (let i = 0; i < State.blockCount; i++) {
-                    // Only process Pending blocks
                     if (State.blockData.confirmationState[i] !== PENDING) continue;
-
                     const blockHash = State.blockData.hashes[i];
                     if (!blockHash) continue;
 
-                    // If this block has children (is in hasChild), it's confirmed
                     if (hasChild.has(blockHash)) {
-                        // Under normal conditions (k=18), blocks are Blue
-                        // Red only occurs during attacks or extreme network splits
+                        // Has children but wasn't processed - mark as Blue
                         State.blockData.confirmationState[i] = BLUE;
                         State.blockData.color[i] = CONFIG.COLORS.BLUE_BLOCK;
                         State.blockData.isBlue[i] = 1;
@@ -1887,8 +1953,9 @@
                     }
                 }
 
-                // Debug: track how many blocks were colored this cycle
+                // Debug: track stats
                 State.dagknight.lastColoredCount = coloredCount;
+                State.dagknight.lastProcessedTips = tipsToProcess.length;
                 // --- End DAGknight Coloring ---
 
                 // Assign linearIndex and targetX to linearized blocks
