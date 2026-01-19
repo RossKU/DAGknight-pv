@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v39-pending-state',
+            VERSION: 'v40-dagknight-engine',
 
             // Display
             MAX_BLOCKS: 500,
@@ -417,6 +417,39 @@
             // Selected Parent Cache (dkoder optimization)
             // Map<blockHash, selectedParentHash>
             selectedParentCache: new Map(),
+
+            // DAGknight Engine (dkoder-compliant)
+            dagknight: {
+                // BlockColouring enum: 0=Pending, 1=Blue, 2=Red
+                PENDING: 0,
+                BLUE: 1,
+                RED: 2,
+
+                // ConflictZoneManager data
+                conflictZone: {
+                    root: null,        // conflict genesis (LCCA)
+                    tips: [],          // current tip hashes
+                    blocks: new Set(), // blocks in zone
+                },
+
+                // CascadeTree data (per-block)
+                cascadeTree: {
+                    pastBlues: new Map(),      // hash → count
+                    pastReds: new Map(),       // hash → count
+                    anticoneBlues: new Map(),  // hash → count
+                    arlb: new Map(),           // anticone_reds_lower_bound
+                    floor: new Map(),          // hash → floor value
+                },
+
+                // Per-block coloring data
+                bluesAnticoneSizes: new Map(), // hash → Map<blueHash, size>
+                mergesetBlues: new Map(),      // hash → Set<hash>
+                mergesetReds: new Map(),       // hash → Set<hash>
+                coloringK: new Map(),          // hash → k value used
+
+                // Parameters
+                d: 10,  // deficit parameter for confirmation
+            },
         };
 
         // ------------------------------------------------------------
@@ -758,6 +791,427 @@
         // ------------------------------------------------------------
         // DAGknight Algorithm
         // ------------------------------------------------------------
+
+        // ============================================================
+        // DAGknight Engine (dkoder-compliant implementation)
+        // ============================================================
+
+        // --- Step 1: Base Functions ---
+
+        // findSelectedParent: Find parent with highest blueWork (dkoder: find_selected_parent)
+        function findSelectedParent(parentHashes) {
+            if (!parentHashes || parentHashes.length === 0) return null;
+            if (parentHashes.length === 1) return parentHashes[0];
+
+            let selectedParent = null;
+            let maxBlueWork = '';
+
+            for (const parentHash of parentHashes) {
+                const idx = State.blockHashToIndex.get(parentHash);
+                if (idx === undefined) continue;
+
+                const blueWork = State.blockData.blueWork[idx] || '0';
+                // String comparison works for hex (same length, lexicographic = numeric)
+                if (blueWork > maxBlueWork || (blueWork === maxBlueWork && parentHash > (selectedParent || ''))) {
+                    maxBlueWork = blueWork;
+                    selectedParent = parentHash;
+                }
+            }
+
+            return selectedParent;
+        }
+
+        // sortBlocks: Sort blocks by blueWork descending (dkoder: sort_blocks)
+        function sortBlocks(blockHashes) {
+            return [...blockHashes].sort((a, b) => {
+                const idxA = State.blockHashToIndex.get(a);
+                const idxB = State.blockHashToIndex.get(b);
+                if (idxA === undefined) return 1;
+                if (idxB === undefined) return -1;
+
+                const workA = State.blockData.blueWork[idxA] || '0';
+                const workB = State.blockData.blueWork[idxB] || '0';
+
+                // Descending order (higher blueWork first)
+                if (workB > workA) return 1;
+                if (workA > workB) return -1;
+                // Tie-breaker: hash
+                return b > a ? 1 : -1;
+            });
+        }
+
+        // blueAnticoneSize: Calculate blue anticone size from a worldview (dkoder: blue_anticone_size)
+        function blueAnticoneSize(blockHash, worldviewHash, bluesAnticoneSizes) {
+            if (!bluesAnticoneSizes) return 0;
+            const sizes = bluesAnticoneSizes.get(worldviewHash);
+            if (!sizes) return 0;
+            return sizes.get(blockHash) || 0;
+        }
+
+        // --- Step 2: ConflictZoneManager Functions ---
+
+        // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
+        function commonChainAncestor(hashes) {
+            if (!hashes || hashes.length === 0) return null;
+            if (hashes.length === 1) return hashes[0];
+
+            // Build Selected Parent Chain for each hash
+            const chains = hashes.map(hash => {
+                const chain = [hash];
+                let current = hash;
+                const visited = new Set([hash]);
+
+                for (let i = 0; i < 200; i++) {  // Max depth
+                    const idx = State.blockHashToIndex.get(current);
+                    if (idx === undefined) break;
+
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
+
+                    // Find selected parent (highest blueWork)
+                    const sp = findSelectedParent(parents);
+                    if (!sp || visited.has(sp)) break;
+
+                    visited.add(sp);
+                    chain.push(sp);
+                    current = sp;
+                }
+                return chain;
+            });
+
+            // Find first common element in all chains
+            const firstChainSet = new Set(chains[0]);
+            for (const hash of chains[0]) {
+                let isCommon = true;
+                for (let i = 1; i < chains.length; i++) {
+                    if (!chains[i].includes(hash)) {
+                        isCommon = false;
+                        break;
+                    }
+                }
+                if (isCommon) return hash;
+            }
+
+            return null;
+        }
+
+        // calcConflictZoneWork: Calculate total blueWork in conflict zone (dkoder: calc_conflict_zone_work)
+        function calcConflictZoneWork(genesisHash, subgroupHashes) {
+            let totalWork = 0n;
+            const visited = new Set();
+
+            // BFS from subgroup tips back to genesis
+            const queue = [...subgroupHashes];
+
+            while (queue.length > 0) {
+                const hash = queue.shift();
+                if (visited.has(hash)) continue;
+                if (hash === genesisHash) continue;  // Don't include genesis itself
+                visited.add(hash);
+
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx === undefined) continue;
+
+                // Add this block's blueWork
+                const workStr = State.blockData.blueWork[idx] || '0';
+                try {
+                    totalWork += BigInt('0x' + workStr);
+                } catch (e) {
+                    // Invalid hex, skip
+                }
+
+                // Add parents to queue (if not past genesis)
+                const parents = State.blockData.parentHashes[idx] || [];
+                for (const parentHash of parents) {
+                    if (!visited.has(parentHash) && parentHash !== genesisHash) {
+                        // Check if parent is ancestor of genesis (stop condition)
+                        if (!isAncestor(parentHash, genesisHash, 50)) {
+                            queue.push(parentHash);
+                        }
+                    }
+                }
+            }
+
+            return totalWork;
+        }
+
+        // orderedMergesetWithoutSelectedParent: Get mergeset in topological order (dkoder: ordered_mergeset_without_selected_parent)
+        function orderedMergesetWithoutSelectedParent(selectedParent, allParents) {
+            // Mergeset = parents that are not the selected parent
+            // and not ancestors of selected parent
+            const mergeset = [];
+
+            for (const parentHash of allParents) {
+                if (parentHash === selectedParent) continue;
+
+                // Check if this parent is in the anticone of selected parent
+                // (not ancestor and not descendant)
+                if (!isAncestor(parentHash, selectedParent, 50) &&
+                    !isAncestor(selectedParent, parentHash, 50)) {
+                    mergeset.push(parentHash);
+                }
+            }
+
+            // Sort by blueWork (topological approximation)
+            return sortBlocks(mergeset);
+        }
+
+        // --- Step 3: K-Colouring Functions ---
+
+        // checkBlueCandidate: Check if candidate can be blue with given k (dkoder: check_blue_candidate)
+        function checkBlueCandidate(newBlockData, candidateHash, k, mergesetBlues) {
+            // Check 1: mergeset blues count <= k
+            if (mergesetBlues.size > k) {
+                return false;
+            }
+
+            // Check 2: candidate's blue anticone size <= k
+            const candidateAnticoneBlues = countAnticoneBlues(candidateHash, mergesetBlues);
+            if (candidateAnticoneBlues > k) {
+                return false;
+            }
+
+            // Check 3: for each existing blue, adding candidate doesn't exceed k
+            for (const blueHash of mergesetBlues) {
+                const blueAnticoneWithCandidate = countAnticoneBluesWithCandidate(
+                    blueHash, candidateHash, mergesetBlues
+                );
+                if (blueAnticoneWithCandidate > k) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Helper: Count blue blocks in anticone of a block
+        function countAnticoneBlues(blockHash, blueSet) {
+            let count = 0;
+            for (const blueHash of blueSet) {
+                if (blueHash === blockHash) continue;
+                // In anticone = not ancestor and not descendant
+                if (!isAncestor(blueHash, blockHash, 30) &&
+                    !isAncestor(blockHash, blueHash, 30)) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        // Helper: Count anticone blues if we add candidate to blue set
+        function countAnticoneBluesWithCandidate(blueHash, candidateHash, currentBlues) {
+            let count = 0;
+
+            // Count existing blues in anticone
+            for (const otherBlue of currentBlues) {
+                if (otherBlue === blueHash) continue;
+                if (!isAncestor(otherBlue, blueHash, 30) &&
+                    !isAncestor(blueHash, otherBlue, 30)) {
+                    count++;
+                }
+            }
+
+            // Check if candidate would be in anticone
+            if (candidateHash !== blueHash &&
+                !isAncestor(candidateHash, blueHash, 30) &&
+                !isAncestor(blueHash, candidateHash, 30)) {
+                count++;
+            }
+
+            return count;
+        }
+
+        // kColouring: Perform k-colouring on parents (dkoder: k_colouring)
+        function kColouring(parentHashes, k, selectedParentOverride = null) {
+            const selectedParent = selectedParentOverride || findSelectedParent(parentHashes);
+            if (!selectedParent) return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
+
+            const mergeset = orderedMergesetWithoutSelectedParent(selectedParent, parentHashes);
+            const mergesetBlues = new Set();
+            const mergesetReds = new Set();
+
+            // Process each candidate in topological order
+            for (const candidateHash of mergeset) {
+                if (checkBlueCandidate(null, candidateHash, k, mergesetBlues)) {
+                    mergesetBlues.add(candidateHash);
+                } else {
+                    mergesetReds.add(candidateHash);
+                }
+            }
+
+            return {
+                selectedParent,
+                mergesetBlues,
+                mergesetReds,
+                blueScore: mergesetBlues.size + 1,  // +1 for selected parent
+            };
+        }
+
+        // --- Step 4: DagknightExecutor Functions ---
+
+        // fillBoundedGhostdagData: Calculate coloring data for subgroup with k (dkoder: fill_bounded_ghostdag_data)
+        function fillBoundedGhostdagData(root, subgroup, tips, k) {
+            // Get all parents from tips
+            const allParents = new Set();
+            for (const tipHash of tips) {
+                const idx = State.blockHashToIndex.get(tipHash);
+                if (idx === undefined) continue;
+                const parents = State.blockData.parentHashes[idx] || [];
+                for (const p of parents) {
+                    allParents.add(p);
+                }
+            }
+
+            // Perform k-colouring
+            const result = kColouring([...allParents], k);
+
+            // Calculate total blueWork for this subgroup
+            let blueWork = 0n;
+            if (result.selectedParent) {
+                const spIdx = State.blockHashToIndex.get(result.selectedParent);
+                if (spIdx !== undefined) {
+                    try {
+                        blueWork = BigInt('0x' + (State.blockData.blueWork[spIdx] || '0'));
+                    } catch (e) {}
+                }
+            }
+
+            // Add blueWork from mergeset blues
+            for (const blueHash of result.mergesetBlues) {
+                const idx = State.blockHashToIndex.get(blueHash);
+                if (idx !== undefined) {
+                    try {
+                        blueWork += BigInt('0x' + (State.blockData.blueWork[idx] || '0'));
+                    } catch (e) {}
+                }
+            }
+
+            return {
+                ...result,
+                blueWork,
+                k,
+            };
+        }
+
+        // rank: Determine ranking by searching k-space (dkoder: rank)
+        function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
+            // Search for minimal k where blueWork >= zoneWork / 2
+            const halfZoneWork = zoneWork / 2n;
+
+            for (let k = 0; k < 256; k++) {  // Max k = 255
+                const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
+
+                if (data.blueWork >= halfZoneWork) {
+                    return {
+                        k,
+                        subgroupVirtual: data,
+                    };
+                }
+            }
+
+            // Fallback: use k=255
+            return {
+                k: 255,
+                subgroupVirtual: fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, 255),
+            };
+        }
+
+        // dagknight: Main parent selection (dkoder: dagknight)
+        function dagknight(parentHashes) {
+            if (!parentHashes || parentHashes.length === 0) return null;
+            if (parentHashes.length === 1) return parentHashes[0];
+
+            // Step 1: Find conflict genesis (LCCA)
+            const conflictGenesis = commonChainAncestor(parentHashes);
+            if (!conflictGenesis) return findSelectedParent(parentHashes);
+
+            // Step 2: Calculate zone work
+            const zoneWork = calcConflictZoneWork(conflictGenesis, parentHashes);
+            if (zoneWork === 0n) return findSelectedParent(parentHashes);
+
+            // Step 3: Rank each subgroup and find winner
+            // For now, simplified: treat all parents as one subgroup
+            const rankResult = rank(conflictGenesis, parentHashes, zoneWork, parentHashes);
+
+            // Return selected parent from winning subgroup
+            return rankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
+        }
+
+        // --- Step 5: CascadeTree Functions (Confirmation) ---
+
+        // cascadeTreeInsert: Add block to cascade tree (dkoder: CascadeTree::insert)
+        function cascadeTreeInsert(hash, pastBlues, pastReds, anticoneBlues, arlb) {
+            const { cascadeTree } = State.dagknight;
+            cascadeTree.pastBlues.set(hash, pastBlues);
+            cascadeTree.pastReds.set(hash, pastReds);
+            cascadeTree.anticoneBlues.set(hash, anticoneBlues);
+            cascadeTree.arlb.set(hash, arlb);
+
+            // Calculate floor
+            // floor = pastReds + arlb - pastBlues - anticoneBlues
+            const floor = pastReds + arlb - pastBlues - anticoneBlues;
+            cascadeTree.floor.set(hash, floor);
+        }
+
+        // updateAnticoneBlues: Update anticone blue count (dkoder: CascadeTree::update_anticone_blues)
+        function updateAnticoneBlues(hash, count) {
+            const { cascadeTree } = State.dagknight;
+            cascadeTree.anticoneBlues.set(hash, count);
+
+            // Recalculate floor
+            const pastBlues = cascadeTree.pastBlues.get(hash) || 0;
+            const pastReds = cascadeTree.pastReds.get(hash) || 0;
+            const arlb = cascadeTree.arlb.get(hash) || 0;
+            const floor = pastReds + arlb - pastBlues - count;
+            cascadeTree.floor.set(hash, floor);
+        }
+
+        // peekMin: Get block with minimum floor (dkoder: CascadeTree::peek_min)
+        function peekMin() {
+            const { cascadeTree } = State.dagknight;
+            let minHash = null;
+            let minFloor = Infinity;
+
+            for (const [hash, floor] of cascadeTree.floor) {
+                if (floor < minFloor) {
+                    minFloor = floor;
+                    minHash = hash;
+                }
+            }
+
+            return { hash: minHash, floor: minFloor };
+        }
+
+        // updateConfirmationState: Update block confirmation based on DAGknight (dkoder-compliant)
+        function updateConfirmationState(blockHash, coloringResult) {
+            const { d, PENDING, BLUE, RED } = State.dagknight;
+            const idx = State.blockHashToIndex.get(blockHash);
+            if (idx === undefined) return;
+
+            // Get floor value
+            const { cascadeTree } = State.dagknight;
+            const floor = cascadeTree.floor.get(blockHash);
+
+            // Check if confirmed (floor >= -d)
+            if (floor !== undefined && floor >= -d) {
+                // Determine blue or red from coloring result
+                if (coloringResult.mergesetBlues.has(blockHash) ||
+                    blockHash === coloringResult.selectedParent) {
+                    State.blockData.confirmationState[idx] = BLUE;
+                    State.blockData.color[idx] = CONFIG.COLORS.BLUE_BLOCK;
+                    State.blockData.isBlue[idx] = 1;
+                } else if (coloringResult.mergesetReds.has(blockHash)) {
+                    State.blockData.confirmationState[idx] = RED;
+                    State.blockData.color[idx] = CONFIG.COLORS.RED_BLOCK;
+                    State.blockData.isBlue[idx] = 0;
+                }
+            }
+            // else: stays PENDING
+        }
+
+        // ============================================================
+        // End DAGknight Engine
+        // ============================================================
 
         // Step 2.2: Reachability - Check if blockA is ancestor of blockB
         function isAncestor(hashA, hashB, maxDepth = 100) {
@@ -1455,39 +1909,61 @@
             const parents = parentsByLevel[0] || [];
             State.blockData.parentHashes[index] = parents;
 
-            // Confirm parent blocks: Selected Parent → Blue, others → Red
+            // DAGknight Engine: Confirm parent blocks using dynamic k-colouring
             if (parents.length > 0) {
-                // Find Selected Parent (highest blueWork)
-                let selectedParentHash = null;
-                let maxBlueWork = '';
+                // Step 1: Find conflict genesis (LCCA) for this block's view
+                const conflictGenesis = commonChainAncestor(parents);
+
+                // Step 2: Calculate zone work
+                const zoneWork = conflictGenesis ? calcConflictZoneWork(conflictGenesis, parents) : 0n;
+
+                // Step 3: Find minimal k using rank()
+                let coloringResult;
+                if (zoneWork > 0n && conflictGenesis) {
+                    const rankResult = rank(conflictGenesis, parents, zoneWork, parents);
+                    coloringResult = rankResult.subgroupVirtual;
+
+                    // Store the k value used for this block
+                    State.dagknight.coloringK.set(hash, rankResult.k);
+                } else {
+                    // Fallback: simple k=18 colouring (like GHOSTDAG)
+                    coloringResult = kColouring(parents, 18);
+                    State.dagknight.coloringK.set(hash, 18);
+                }
+
+                // Step 4: Update confirmation state for all parents
+                const { PENDING, BLUE, RED } = State.dagknight;
+
                 for (const parentHash of parents) {
                     const parentIdx = State.blockHashToIndex.get(parentHash);
-                    if (parentIdx !== undefined) {
-                        const parentBlueWork = State.blockData.blueWork[parentIdx] || '0';
-                        if (parentBlueWork > maxBlueWork) {
-                            maxBlueWork = parentBlueWork;
-                            selectedParentHash = parentHash;
-                        }
+                    if (parentIdx === undefined) continue;
+
+                    // Only update if still pending
+                    if (State.blockData.confirmationState[parentIdx] !== PENDING) continue;
+
+                    // Determine blue or red from coloring result
+                    if (parentHash === coloringResult.selectedParent ||
+                        coloringResult.mergesetBlues.has(parentHash)) {
+                        // Blue: selected parent or in mergeset blues
+                        State.blockData.confirmationState[parentIdx] = BLUE;
+                        State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
+                        State.blockData.isBlue[parentIdx] = 1;
+                    } else if (coloringResult.mergesetReds.has(parentHash)) {
+                        // Red: in mergeset reds
+                        State.blockData.confirmationState[parentIdx] = RED;
+                        State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
+                        State.blockData.isBlue[parentIdx] = 0;
+                    } else {
+                        // Not in mergeset (ancestor of selected parent) - treat as blue
+                        State.blockData.confirmationState[parentIdx] = BLUE;
+                        State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
+                        State.blockData.isBlue[parentIdx] = 1;
                     }
                 }
 
-                // Update confirmation state for all parents
-                for (const parentHash of parents) {
-                    const parentIdx = State.blockHashToIndex.get(parentHash);
-                    if (parentIdx !== undefined && State.blockData.confirmationState[parentIdx] === 0) {
-                        if (parentHash === selectedParentHash) {
-                            // Selected Parent → Blue
-                            State.blockData.confirmationState[parentIdx] = 1;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 1;
-                        } else {
-                            // Non-selected parent → Red
-                            State.blockData.confirmationState[parentIdx] = 2;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 0;
-                        }
-                    }
-                }
+                // Store mergeset data for this block
+                State.dagknight.mergesetBlues.set(hash, coloringResult.mergesetBlues);
+                State.dagknight.mergesetReds.set(hash, coloringResult.mergesetReds);
             }
 
             // Update ring buffer
