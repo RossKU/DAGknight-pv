@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v55-debug-counts',
+            VERSION: 'v56-zone-scope-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -962,7 +962,7 @@
         }
 
         // calcConflictZoneWork: Calculate total work in conflict zone (dkoder: calc_conflict_zone_work)
-        // Uses calcWork(bits) instead of cumulative blueWork
+        // Returns both zoneWork AND zoneBlocks for consistent kColouring
         function calcConflictZoneWork(genesisHash, subgroupHashes) {
             let totalWork = 0n;
             const visited = new Set();
@@ -998,7 +998,8 @@
             // Debug: track zone block count
             State.dagknight.lastZoneBlockCount = visited.size;
 
-            return totalWork;
+            // Return both work and blocks for consistent blueWork calculation
+            return { zoneWork: totalWork, zoneBlocks: [...visited] };
         }
 
         // orderedMergesetWithoutSelectedParent: Get mergeset in topological order (dkoder: ordered_mergeset_without_selected_parent)
@@ -1145,29 +1146,16 @@
 
         // --- Step 4: DagknightExecutor Functions ---
 
-        // fillBoundedGhostdagData: Calculate coloring data for subgroup with k (dkoder: fill_bounded_ghostdag_data)
-        // blueWork = zone内のblue blocksのcalcWork(bits)の合計（累積を使わない）
-        // これによりkの変化がblueWorkに適切に反映される
-        function fillBoundedGhostdagData(root, subgroup, tips, k) {
-            // Get all parents from tips
-            const allParents = new Set();
-            for (const tipHash of tips) {
-                const idx = State.blockHashToIndex.get(tipHash);
-                if (idx === undefined) continue;
-                const parents = State.blockData.parentHashes[idx] || [];
-                for (const p of parents) {
-                    allParents.add(p);
-                }
-            }
+        // fillBoundedGhostdagData: Calculate coloring data for zone blocks with k
+        // Now uses ALL zone blocks (same as zoneWork calculation) for kColouring
+        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+            // Use zone blocks directly (same blocks used for zoneWork)
+            // This ensures zoneWork and blueWork are calculated over the same set
 
-            // Perform k-colouring (cached) - k affects how many blues are in mergeset
-            const result = kColouring([...allParents], k);
+            // Perform k-colouring on ALL zone blocks (not just tip parents)
+            const result = kColouring(zoneBlocks, k);
 
             // Calculate blueWork as sum of calcWork(bits) for BLUE blocks only
-            // NO cumulative - just the zone's blue blocks
-            // This makes blueWork properly k-dependent:
-            //   k=0: few blues → small blueWork
-            //   k=18: many blues → large blueWork
             let blueWork = 0n;
 
             // 1. Add selected parent's work (it's always blue)
@@ -1249,13 +1237,12 @@
             const conflictGenesis = commonChainAncestor(parentHashes);
             if (!conflictGenesis) return findSelectedParent(parentHashes);
 
-            // Step 2: Calculate zone work
-            const zoneWork = calcConflictZoneWork(conflictGenesis, parentHashes);
+            // Step 2: Calculate zone work AND get zone blocks
+            const { zoneWork, zoneBlocks } = calcConflictZoneWork(conflictGenesis, parentHashes);
             if (zoneWork === 0n) return findSelectedParent(parentHashes);
 
-            // Step 3: Rank each subgroup and find winner
-            // For now, simplified: treat all parents as one subgroup
-            const rankResult = rank(conflictGenesis, parentHashes, zoneWork, parentHashes);
+            // Step 3: Rank using zone blocks (same blocks used for zoneWork)
+            const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
 
             // Return selected parent from winning subgroup
             return rankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
