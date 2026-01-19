@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v59-use-dagknight',
+            VERSION: 'v60-chain-blueWork',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1167,24 +1167,61 @@
 
         // --- Step 4: DagknightExecutor Functions ---
 
-        // fillBoundedGhostdagData: Calculate coloring data for zone blocks with k
-        // Now uses ALL zone blocks (same as zoneWork calculation) for kColouring
-        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
-            // Use zone blocks directly (same blocks used for zoneWork)
-            // This ensures zoneWork and blueWork are calculated over the same set
+        // Helper: Find blocks on selected chain from root to selectedParent within zone
+        // These blocks are implicitly blue (on the main chain)
+        function findSelectedChainInZone(root, selectedParent, zoneBlocksSet) {
+            const chain = [];
+            let current = selectedParent;
+            const visited = new Set();
 
-            // Perform k-colouring on ALL zone blocks (not just tip parents)
+            // Walk backwards from selectedParent to root
+            while (current && current !== root && !visited.has(current)) {
+                visited.add(current);
+
+                // Only include if in zone
+                if (zoneBlocksSet.has(current)) {
+                    chain.push(current);
+                }
+
+                // Get parent with highest blueWork (selected parent's parent)
+                const idx = State.blockHashToIndex.get(current);
+                if (idx === undefined) break;
+
+                const parents = State.blockData.parentHashes[idx] || [];
+                if (parents.length === 0) break;
+
+                // Find parent with highest blueWork
+                current = findSelectedParent(parents);
+            }
+
+            return chain;
+        }
+
+        // fillBoundedGhostdagData: Calculate coloring data for zone blocks with k
+        // blueWork = selected_chain work + mergeset_blues work (dkoder-aligned)
+        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+            const zoneBlocksSet = new Set(zoneBlocks);
+
+            // Perform k-colouring on ALL zone blocks
             const result = kColouring(zoneBlocks, k);
 
-            // Calculate blueWork as sum of calcWork(bits) for BLUE blocks only
+            // Calculate blueWork (dkoder-aligned):
+            // 1. Work of all blocks on selected chain (root → selectedParent)
+            // 2. Plus work of mergeset_blues
             let blueWork = 0n;
+            let chainCount = 0;
 
-            // 1. Add selected parent's work (it's always blue)
+            // 1. Add work from selected chain (implicitly blue)
             if (result.selectedParent) {
-                const spIdx = State.blockHashToIndex.get(result.selectedParent);
-                if (spIdx !== undefined) {
-                    const bits = State.blockData.bits[spIdx];
-                    blueWork += calcWork(bits);
+                const chain = findSelectedChainInZone(root, result.selectedParent, zoneBlocksSet);
+                chainCount = chain.length;
+
+                for (const chainHash of chain) {
+                    const idx = State.blockHashToIndex.get(chainHash);
+                    if (idx !== undefined) {
+                        const bits = State.blockData.bits[idx];
+                        blueWork += calcWork(bits);
+                    }
                 }
             }
 
@@ -1197,10 +1234,14 @@
                 }
             }
 
+            // Debug: track chain and mergeset counts
+            State.dagknight.lastChainCount = chainCount;
+            State.dagknight.lastMergesetBluesCount = result.mergesetBlues.size;
+
             return {
                 ...result,
                 blueWork,
-                blueCount: 1 + result.mergesetBlues.size,  // For debugging
+                blueCount: chainCount + result.mergesetBlues.size,  // chain + mergeset
                 k,
             };
         }
@@ -2362,12 +2403,11 @@
                     }
                     lines.push(line3);
 
-                    // Line 4: Cache and coloring
-                    let line4 = `cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
+                    // Line 4: Blue composition (chain + mergeset)
+                    let line4 = `blues:${State.dagknight.lastBlueCount ?? 0}`;
+                    line4 += ` (chain:${State.dagknight.lastChainCount ?? 0}`;
+                    line4 += ` +merge:${State.dagknight.lastMergesetBluesCount ?? 0})`;
                     line4 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
-                    if (State.dagknight.lastBlueCount !== undefined) {
-                        line4 += ` blues:${State.dagknight.lastBlueCount}`;
-                    }
                     lines.push(line4);
                 }
 
