@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v54-zone-local-blueWork',
+            VERSION: 'v55-debug-counts',
 
             // Display
             MAX_BLOCKS: 500,
@@ -995,6 +995,9 @@
                 }
             }
 
+            // Debug: track zone block count
+            State.dagknight.lastZoneBlockCount = visited.size;
+
             return totalWork;
         }
 
@@ -1205,14 +1208,16 @@
             // Optimization: limit k search (normal cases need k=0-10)
             const MAX_K = 32;
 
+            // Debug: track parent count
+            State.dagknight.lastParentCount = subgroup.length;
+
             for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
-                // Debug: track what k values are being tried
-                if (k === 0) {
-                    State.dagknight.lastZoneWork = zoneWork.toString();
-                    State.dagknight.lastBlueWork = data.blueWork.toString();
-                }
+                // Debug: track zone/blue work and blue count
+                State.dagknight.lastZoneWork = zoneWork.toString();
+                State.dagknight.lastBlueWork = data.blueWork.toString();
+                State.dagknight.lastBlueCount = data.blueCount;
 
                 if (data.blueWork >= halfZoneWork) {
                     State.dagknight.lastK = k;
@@ -1225,11 +1230,13 @@
             }
 
             // Fallback: use MAX_K (if still not found, something is wrong)
+            const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
             State.dagknight.lastK = MAX_K;
+            State.dagknight.lastBlueCount = fallbackData.blueCount;
             State.dagknight.perf.rank.time += performance.now() - start;
             return {
                 k: MAX_K,
-                subgroupVirtual: fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K),
+                subgroupVirtual: fallbackData,
             };
         }
 
@@ -2277,48 +2284,59 @@
                 DOM.memoryUsage.textContent = `Edges: ${State.stats.edgeCount}`;
             }
 
-            // Debug info (with version for screenshot identification)
+            // Debug info (multi-line for readability)
             if (DOM.debugInfo) {
-                let debugText = `${CONFIG.VERSION} | `;
+                const lines = [];
+
+                // Line 1: Version and timing
+                let line1 = `${CONFIG.VERSION}`;
                 if (State.debug?.error) {
-                    debugText += `ERR: ${State.debug.error}`;
+                    line1 += ` | ERR: ${State.debug.error}`;
                 } else if (State.debug) {
-                    debugText += `T:${State.debug.calcTime}ms`;
-                    // DAGknight Engine performance breakdown
+                    line1 += ` | T:${State.debug.calcTime}ms`;
                     const dk = State.dagknight.perf;
-                    debugText += ` | isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
-                    debugText += ` CCA:${dk.commonChainAncestor.calls}x/${dk.commonChainAncestor.time.toFixed(0)}ms`;
-                    debugText += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
-                    debugText += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
-                    // Cache stats and coloring info
-                    debugText += ` | cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
-                    debugText += ` col:${State.dagknight.lastColoredCount || 0} k:${State.dagknight.lastK ?? '-'}`;
-                    // Debug: Show bits value from first block
-                    const firstBits = State.blockData.bits[0] || 0;
-                    debugText += ` | bits:${firstBits ? '0x' + firstBits.toString(16) : 'none'}`;
-                    // Show zoneWork vs blueWork for debugging k calculation
+                    line1 += ` | isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
+                    line1 += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
+                    line1 += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
+                }
+                lines.push(line1);
+
+                // Line 2: k calculation details
+                if (State.debug && !State.debug.error) {
+                    let line2 = `k:${State.dagknight.lastK ?? '-'}`;
+                    // Zone and blue work comparison
                     if (State.dagknight.lastZoneWork && State.dagknight.lastBlueWork) {
                         const zw = BigInt(State.dagknight.lastZoneWork);
                         const bw = BigInt(State.dagknight.lastBlueWork);
-                        // Show in scientific notation for readability
                         const zwExp = zw > 0n ? zw.toString().length : 0;
                         const bwExp = bw > 0n ? bw.toString().length : 0;
-                        debugText += ` | zW:${zwExp}d bW:${bwExp}d`;
+                        line2 += ` | zoneWork:${zwExp}桁 blueWork:${bwExp}桁`;
+                        // Show if condition is met
+                        const halfZw = zw / 2n;
+                        const met = bw >= halfZw ? '✓' : '✗';
+                        line2 += ` | bW>=zW/2: ${met}`;
                     }
-                } else {
-                    debugText += 'Calculating...';
+                    // Zone block count and blue count
+                    if (State.dagknight.lastZoneBlockCount !== undefined) {
+                        line2 += ` | zone:${State.dagknight.lastZoneBlockCount}blks`;
+                    }
+                    if (State.dagknight.lastBlueCount !== undefined) {
+                        line2 += ` blues:${State.dagknight.lastBlueCount}`;
+                    }
+                    if (State.dagknight.lastParentCount !== undefined) {
+                        line2 += ` parents:${State.dagknight.lastParentCount}`;
+                    }
+                    lines.push(line2);
+
+                    // Line 3: Cache and coloring
+                    let line3 = `cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
+                    line3 += ` | colored:${State.dagknight.lastColoredCount || 0}`;
+                    const firstBits = State.blockData.bits[0] || 0;
+                    line3 += ` | bits:${firstBits ? '0x' + firstBits.toString(16) : 'none'}`;
+                    lines.push(line3);
                 }
-                // Add Y range info
-                let minY = Infinity, maxY = -Infinity;
-                for (let i = 0; i < State.blockCount; i++) {
-                    const yVal = State.blockData.y[i];
-                    if (yVal < minY) minY = yVal;
-                    if (yVal > maxY) maxY = yVal;
-                }
-                if (State.blockCount > 0) {
-                    debugText += ` | Y:[${minY.toFixed(0)},${maxY.toFixed(0)}]`;
-                }
-                DOM.debugInfo.textContent = debugText;
+
+                DOM.debugInfo.innerHTML = lines.join('<br>');
             }
         }
 
