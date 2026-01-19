@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v62-k-status',
+            VERSION: 'v63-check-blue-stats',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1047,15 +1047,24 @@
         // --- Step 3: K-Colouring Functions ---
 
         // checkBlueCandidate: Check if candidate can be blue with given k (dkoder: check_blue_candidate)
+        // Debug counters for rejection reasons
+        let checkBlueStats = { check1: 0, check2: 0, check3: 0, passed: 0 };
+
         function checkBlueCandidate(newBlockData, candidateHash, k, mergesetBlues) {
             // Check 1: mergeset blues count <= k
             if (mergesetBlues.size > k) {
+                checkBlueStats.check1++;
                 return false;
             }
 
             // Check 2: candidate's blue anticone size <= k
             const candidateAnticoneBlues = countAnticoneBlues(candidateHash, mergesetBlues);
             if (candidateAnticoneBlues > k) {
+                checkBlueStats.check2++;
+                // Debug: track max anticone seen
+                if (!State.dagknight.maxAnticoneBlues || candidateAnticoneBlues > State.dagknight.maxAnticoneBlues) {
+                    State.dagknight.maxAnticoneBlues = candidateAnticoneBlues;
+                }
                 return false;
             }
 
@@ -1065,11 +1074,21 @@
                     blueHash, candidateHash, mergesetBlues
                 );
                 if (blueAnticoneWithCandidate > k) {
+                    checkBlueStats.check3++;
                     return false;
                 }
             }
 
+            checkBlueStats.passed++;
             return true;
+        }
+
+        // Reset and expose stats
+        function resetCheckBlueStats() {
+            checkBlueStats = { check1: 0, check2: 0, check3: 0, passed: 0 };
+        }
+        function getCheckBlueStats() {
+            return checkBlueStats;
         }
 
         // Helper: Count blue blocks in anticone of a block
@@ -1133,6 +1152,9 @@
             const mergesetBlues = new Set();
             const mergesetReds = new Set();
 
+            // Reset debug stats for this colouring
+            resetCheckBlueStats();
+
             // Process each candidate in topological order
             for (const candidateHash of mergeset) {
                 // Early termination (dkoder): if blues already at k, remaining are Red
@@ -1148,6 +1170,10 @@
                     mergesetReds.add(candidateHash);
                 }
             }
+
+            // Save debug stats
+            State.dagknight.lastCheckBlueStats = getCheckBlueStats();
+            State.dagknight.lastMergesetSize = mergeset.length;
 
             const result = {
                 selectedParent,
@@ -2458,6 +2484,17 @@
                     line5 += ` out:${State.dagknight.lastChainOutsideZone ?? 0}`;
                     line5 += ` stop:${State.dagknight.lastChainStopReason ?? '?'}`;
                     lines.push(line5);
+
+                    // Line 6: checkBlueCandidate rejection stats
+                    const stats = State.dagknight.lastCheckBlueStats;
+                    if (stats) {
+                        let line6 = `reject: c1:${stats.check1} c2:${stats.check2} c3:${stats.check3}`;
+                        line6 += ` pass:${stats.passed}`;
+                        if (State.dagknight.maxAnticoneBlues) {
+                            line6 += ` maxAnti:${State.dagknight.maxAnticoneBlues}`;
+                        }
+                        lines.push(line6);
+                    }
                 }
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
