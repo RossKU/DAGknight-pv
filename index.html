@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v42-batch-coloring',
+            VERSION: 'v43-hasChild-coloring',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1863,54 +1863,32 @@
                 dk.kColouring = { calls: 0, time: 0 };
                 dk.rank = { calls: 0, time: 0 };
 
-                // Process blocks that have children (are in hasChild set)
-                // Blocks in hasChild are confirmed (no longer tips)
                 const { PENDING, BLUE, RED } = State.dagknight;
-                const processedParents = new Set();
+                let coloredCount = 0;
 
-                // For each tip, confirm its parents using kColouring
-                for (const tipHash of tips.slice(0, 10)) {
-                    const tipIdx = State.blockHashToIndex.get(tipHash);
-                    if (tipIdx === undefined) continue;
+                // Scan ALL blocks and color those that have children (hasChild)
+                // hasChild = confirmed (someone selected this block as parent)
+                // Under k=18, almost all blocks become Blue (Red is very rare)
+                for (let i = 0; i < State.blockCount; i++) {
+                    // Only process Pending blocks
+                    if (State.blockData.confirmationState[i] !== PENDING) continue;
 
-                    const parents = State.blockData.parentHashes[tipIdx] || [];
-                    if (parents.length === 0) continue;
+                    const blockHash = State.blockData.hashes[i];
+                    if (!blockHash) continue;
 
-                    // Skip if already processed these parents
-                    const parentsKey = parents.slice().sort().join(',');
-                    if (processedParents.has(parentsKey)) continue;
-                    processedParents.add(parentsKey);
-
-                    // Use simple k=18 colouring (GHOSTDAG-compatible, fast)
-                    // Full DAGknight dynamic-k is too expensive for real-time viz
-                    const coloringResult = kColouring(parents, 18);
-
-                    // Update confirmation state for parents
-                    for (const parentHash of parents) {
-                        const parentIdx = State.blockHashToIndex.get(parentHash);
-                        if (parentIdx === undefined) continue;
-
-                        // Only update if still pending
-                        if (State.blockData.confirmationState[parentIdx] !== PENDING) continue;
-
-                        // Determine blue or red
-                        if (parentHash === coloringResult.selectedParent ||
-                            coloringResult.mergesetBlues.has(parentHash)) {
-                            State.blockData.confirmationState[parentIdx] = BLUE;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 1;
-                        } else if (coloringResult.mergesetReds.has(parentHash)) {
-                            State.blockData.confirmationState[parentIdx] = RED;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 0;
-                        } else {
-                            // Not in mergeset (ancestor of selected parent) - blue
-                            State.blockData.confirmationState[parentIdx] = BLUE;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 1;
-                        }
+                    // If this block has children (is in hasChild), it's confirmed
+                    if (hasChild.has(blockHash)) {
+                        // Under normal conditions (k=18), blocks are Blue
+                        // Red only occurs during attacks or extreme network splits
+                        State.blockData.confirmationState[i] = BLUE;
+                        State.blockData.color[i] = CONFIG.COLORS.BLUE_BLOCK;
+                        State.blockData.isBlue[i] = 1;
+                        coloredCount++;
                     }
                 }
+
+                // Debug: track how many blocks were colored this cycle
+                State.dagknight.lastColoredCount = coloredCount;
                 // --- End DAGknight Coloring ---
 
                 // Assign linearIndex and targetX to linearized blocks
@@ -2169,8 +2147,9 @@
                     debugText += ` CCA:${dk.commonChainAncestor.calls}x/${dk.commonChainAncestor.time.toFixed(0)}ms`;
                     debugText += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
                     debugText += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
-                    // Cache stats
+                    // Cache stats and coloring info
                     debugText += ` | cache:${State.dagknight.ancestorCacheHits}/${State.dagknight.ancestorCache.size}`;
+                    debugText += ` col:${State.dagknight.lastColoredCount || 0}`;
                 } else {
                     debugText += 'Calculating...';
                 }
