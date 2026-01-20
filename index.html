@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v85-perf-profiling',
+            VERSION: 'v86-fillBounded-profiling',
 
             // Display
             MAX_BLOCKS: 500,
@@ -540,6 +540,7 @@
                     commonChainAncestor: { calls: 0, time: 0 },
                     calcConflictZoneWork: { calls: 0, time: 0 },
                     computeIntervals: { calls: 0, time: 0 },
+                    fillBounded: { calls: 0, time: 0 },
                     kColouring: { calls: 0, time: 0 },
                     checkBlueCandidate: { calls: 0, time: 0 },
                     rank: { calls: 0, time: 0 },
@@ -1522,6 +1523,9 @@
         // fillBoundedGhostdagData: dkoder-aligned incremental processing
         // Process zone blocks using heap-based topological order (by blue_work)
         function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+            const startTime = performance.now();
+            State.dagknight.perf.fillBounded.calls++;
+
             const zoneSet = new Set(zoneBlocks);
 
             // Step 1: Initialize stores
@@ -1695,6 +1699,7 @@
                 finalBlueWork: finalBlueWork.toString().length,  // digits
             };
 
+            State.dagknight.perf.fillBounded.time += performance.now() - startTime;
             return {
                 selectedParent: finalSelectedParent,
                 mergesetBlues: allMergesetBlues,
@@ -2621,6 +2626,7 @@
                 dk.commonChainAncestor = { calls: 0, time: 0 };
                 dk.calcConflictZoneWork = { calls: 0, time: 0 };
                 dk.computeIntervals = { calls: 0, time: 0 };
+                dk.fillBounded = { calls: 0, time: 0 };
                 dk.kColouring = { calls: 0, time: 0 };
                 dk.rank = { calls: 0, time: 0 };
                 // Reset interval-based reachability counters
@@ -2995,6 +3001,7 @@
                     const dk = State.dagknight.perf;
                     line1 += ` | zoneW:${dk.calcConflictZoneWork.time.toFixed(0)}ms`;
                     line1 += ` intv:${dk.computeIntervals.time.toFixed(0)}ms`;
+                    line1 += ` fill:${dk.fillBounded.calls}x/${dk.fillBounded.time.toFixed(0)}ms`;
                     line1 += ` isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
                     line1 += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
                     line1 += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
