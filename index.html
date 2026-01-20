@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v83-fix-dummy-gen-limit',
+            VERSION: 'v84-skip-dummy-dagknight',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1197,6 +1197,12 @@
                 if (hash === genesisHash) continue;  // Don't include genesis itself
                 visited.add(hash);
 
+                // Skip dummy blocks from DAGknight calculation (visualization only)
+                if (isDummyHash(hash)) {
+                    skippedCount++;
+                    continue;
+                }
+
                 const idx = State.blockHashToIndex.get(hash);
                 if (idx === undefined) {
                     skippedCount++;
@@ -1214,10 +1220,10 @@
                     firstBitsValues.push({ bits, work: work.toString().length });
                 }
 
-                // Add parents to queue (if not past genesis)
+                // Add parents to queue (if not past genesis, skip dummies)
                 const parents = State.blockData.parentHashes[idx] || [];
                 for (const parentHash of parents) {
-                    if (!visited.has(parentHash) && parentHash !== genesisHash) {
+                    if (!visited.has(parentHash) && parentHash !== genesisHash && !isDummyHash(parentHash)) {
                         // Check if parent is ancestor of genesis (stop condition)
                         if (!isAncestor(parentHash, genesisHash, 50)) {
                             queue.push(parentHash);
