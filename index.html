@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v84-skip-dummy-dagknight',
+            VERSION: 'v85-perf-profiling',
 
             // Display
             MAX_BLOCKS: 500,
@@ -539,6 +539,7 @@
                     isAncestor: { calls: 0, time: 0 },
                     commonChainAncestor: { calls: 0, time: 0 },
                     calcConflictZoneWork: { calls: 0, time: 0 },
+                    computeIntervals: { calls: 0, time: 0 },
                     kColouring: { calls: 0, time: 0 },
                     checkBlueCandidate: { calls: 0, time: 0 },
                     rank: { calls: 0, time: 0 },
@@ -1178,6 +1179,8 @@
         // calcConflictZoneWork: Calculate total work in conflict zone (dkoder: calc_conflict_zone_work)
         // Returns both zoneWork AND zoneBlocks for consistent kColouring
         function calcConflictZoneWork(genesisHash, subgroupHashes) {
+            const startTime = performance.now();
+            State.dagknight.perf.calcConflictZoneWork.calls++;
             let totalWork = 0n;
             const visited = new Set();
             const validBlocks = [];  // Blocks with valid idx
@@ -1239,6 +1242,7 @@
             State.dagknight.lastFirstBits = firstBitsValues;
             State.dagknight.lastTotalWorkDigits = totalWork > 0n ? totalWork.toString().length : 0;
 
+            State.dagknight.perf.calcConflictZoneWork.time += performance.now() - startTime;
             // Return only valid blocks for kColouring
             return { zoneWork: totalWork, zoneBlocks: validBlocks };
         }
@@ -1913,11 +1917,17 @@
          * dkoder uses: store.get_interval(this)?.contains(store.get_interval(queried)?)
          */
         function computeIntervals(rootHash, blockSet) {
+            const startTime = performance.now();
+            State.dagknight.perf.computeIntervals.calls++;
+
             const { intervalMap } = State.dagknight;
             intervalMap.clear();
             State.dagknight.intervalCounter = 0;
 
-            if (!rootHash || !blockSet || blockSet.size === 0) return;
+            if (!rootHash || !blockSet || blockSet.size === 0) {
+                State.dagknight.perf.computeIntervals.time += performance.now() - startTime;
+                return;
+            }
 
             // Build child map: parent → [children]
             // This is needed because we only store parentHashes, not childHashes
@@ -1961,6 +1971,8 @@
                     dfs(hash);
                 }
             }
+
+            State.dagknight.perf.computeIntervals.time += performance.now() - startTime;
         }
 
         /**
@@ -2607,6 +2619,8 @@
                 const dk = State.dagknight.perf;
                 dk.isAncestor = { calls: 0, time: 0 };
                 dk.commonChainAncestor = { calls: 0, time: 0 };
+                dk.calcConflictZoneWork = { calls: 0, time: 0 };
+                dk.computeIntervals = { calls: 0, time: 0 };
                 dk.kColouring = { calls: 0, time: 0 };
                 dk.rank = { calls: 0, time: 0 };
                 // Reset interval-based reachability counters
@@ -2979,7 +2993,9 @@
                 } else if (State.debug) {
                     line1 += ` | T:${State.debug.calcTime}ms`;
                     const dk = State.dagknight.perf;
-                    line1 += ` | isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
+                    line1 += ` | zoneW:${dk.calcConflictZoneWork.time.toFixed(0)}ms`;
+                    line1 += ` intv:${dk.computeIntervals.time.toFixed(0)}ms`;
+                    line1 += ` isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
                     line1 += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
                     line1 += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
                     // Interval-based reachability stats (dkoder: O(1) vs BFS fallback)
