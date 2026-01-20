@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v71-edge-visibility',
+            VERSION: 'v72-chain-block-outline',
 
             // Display
             MAX_BLOCKS: 500,
@@ -321,6 +321,7 @@
                 RED_BLOCK: 0xE74C3C,
                 SELECTED_CHAIN: 0x00FF88,
                 LCCA: 0xFFD700,  // Gold/Yellow for LCCA
+                WHITE: 0xFFFFFF,  // White for outlines
                 EDGE: 0x334455,
                 EDGE_SELECTED: 0xFFFFFF,
                 HONEST_CLUSTER: 0x9B59B6,
@@ -520,6 +521,7 @@
                 pendingBlocks: new PIXI.Graphics(),  // Pending blocks (gray, behind blue/red)
                 blueBlocks: new PIXI.Graphics(),
                 redBlocks: new PIXI.Graphics(),
+                chainBlocks: new PIXI.Graphics(),  // Chain blocks (large, with white outline, on top)
                 lcca: new PIXI.Graphics(),  // LCCA block (on top)
             };
 
@@ -527,9 +529,10 @@
             State.app.stage.addChild(State.graphics.edges);          // 1. Gray edges (back)
             State.app.stage.addChild(State.graphics.chainEdges);     // 2. Selected Chain edges
             State.app.stage.addChild(State.graphics.pendingBlocks);  // 3. Pending blocks (gray)
-            State.app.stage.addChild(State.graphics.blueBlocks);     // 4. Blue blocks
+            State.app.stage.addChild(State.graphics.blueBlocks);     // 4. Blue blocks (non-chain)
             State.app.stage.addChild(State.graphics.redBlocks);      // 5. Red blocks
-            State.app.stage.addChild(State.graphics.lcca);           // 6. LCCA (front)
+            State.app.stage.addChild(State.graphics.chainBlocks);    // 6. Chain blocks (large, front)
+            State.app.stage.addChild(State.graphics.lcca);           // 7. LCCA (front)
 
             // Store viewport dimensions
             State.viewport.width = State.app.screen.width;
@@ -589,7 +592,7 @@
         // DAG Rendering (Optimized: reuse Graphics objects)
         // ------------------------------------------------------------
         function renderDAG() {
-            const { edges, chainEdges, pendingBlocks, blueBlocks, redBlocks, lcca } = State.graphics;
+            const { edges, chainEdges, pendingBlocks, blueBlocks, redBlocks, chainBlocks, lcca } = State.graphics;
 
             // Smooth viewport scrolling (lerp interpolation)
             State.viewport.x += (State.viewport.targetX - State.viewport.x) * 0.1;
@@ -612,6 +615,7 @@
             pendingBlocks.clear();
             blueBlocks.clear();
             redBlocks.clear();
+            chainBlocks.clear();
             lcca.clear();
 
             if (State.blockCount === 0) return;
@@ -701,8 +705,10 @@
                     const halfSize = blockSize / 2;
                     pendingBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
                 } else if (isChainBlock && state === 1) {
-                    // Confirmed chain block - larger blue
-                    blueBlocks.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize);
+                    // Confirmed chain block - larger blue with white outline (top layer)
+                    chainBlocks.rect(screenX - chainHalfSize, screenY - chainHalfSize, chainBlockSize, chainBlockSize)
+                        .fill({ color: CONFIG.COLORS.BLUE_BLOCK })
+                        .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 } else if (state === 1) {
                     // Blue (confirmed but not on chain)
                     const blockSize = size[i] * zoom;
