@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v78-dummy-ui',
+            VERSION: 'v79-dummy-phase2',
 
             // Display
             MAX_BLOCKS: 500,
@@ -934,6 +934,82 @@
                 activeTips: State.dummyTips.size,
                 tips: Array.from(State.dummyTips.entries()).slice(0, 5),  // Show first 5
             });
+        }
+
+        /**
+         * Generate dummy blocks for high BPS simulation
+         * Called after a real block is added
+         */
+        function generateDummyBlocks(originalBlock) {
+            if (!CONFIG.DUMMY.ENABLED) return;
+            if (State.blockCount >= CONFIG.MAX_BLOCKS - CONFIG.DUMMY.MULTIPLIER) return;  // Safety margin
+
+            const originalHash = originalBlock.header.hash;
+            const originalDaaScore = Number(originalBlock.header.daaScore);
+            const originalBlueWork = originalBlock.header.blueWork || '0';
+            const originalBits = Number(originalBlock.header.bits || 0);
+            const parentsByLevel = originalBlock.header.parentsByLevel || [];
+            const originalParents = parentsByLevel[0] || [];
+
+            // Generate MULTIPLIER dummy blocks
+            for (let i = 0; i < CONFIG.DUMMY.MULTIPLIER; i++) {
+                const dummyHash = generateDummyHash(originalHash, i);
+
+                // Skip if already exists
+                if (State.blockHashToIndex.has(dummyHash)) continue;
+
+                // Get next index
+                const index = State.ringHead;
+                const oldHash = State.blockData.hashes[index];
+                if (oldHash) {
+                    State.blockHashToIndex.delete(oldHash);
+                    State.dummyTips.delete(oldHash);  // Remove from tips if it was there
+                }
+
+                // Store dummy block
+                State.blockData.hashes[index] = dummyHash;
+                State.blockHashToIndex.set(dummyHash, index);
+                State.blockData.daaScore[index] = originalDaaScore;
+
+                // X = same spawn area with slight offset
+                const tipOffset = 10 + Math.random() * 30;
+                State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
+
+                // Y = spread vertically (different from original)
+                const randomY = (Math.random() - 0.5) * 300;
+                State.blockData.y[index] = randomY;
+                State.blockData.targetY[index] = randomY;
+
+                State.blockData.targetX[index] = State.blockData.x[index];
+                State.blockData.linearIndex[index] = -1;
+
+                // BlueWork: same as original (will be lower priority due to hash)
+                State.blockData.blueScore[index] = Number(originalBlock.header.blueScore || 0);
+                State.blockData.blueWork[index] = originalBlueWork;
+                State.blockData.bits[index] = originalBits;
+
+                // Color: Start as Pending
+                State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
+                State.blockData.confirmationState[index] = 0;
+                State.blockData.isBlue[index] = 1;
+                State.blockData.size[index] = CONFIG.BLOCK_SIZE;
+
+                // Parents: same as original
+                State.blockData.parentHashes[index] = [...originalParents];
+
+                // Update ring buffer
+                State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
+                if (State.blockCount < CONFIG.MAX_BLOCKS) {
+                    State.blockCount++;
+                }
+
+                // Add to dummyTips (selectCount = 0)
+                State.dummyTips.set(dummyHash, 0);
+                State.dummyBlockCount++;
+            }
+
+            // Debug log (throttled)
+            logDummyStatus();
         }
 
         // ------------------------------------------------------------
@@ -2695,6 +2771,9 @@
                     const block = event.data.block;
                     // block-added event already contains full block info
                     addBlock(block);
+
+                    // Generate dummy blocks for high BPS simulation (Phase 2)
+                    generateDummyBlocks(block);
                 } catch (error) {
                     console.warn('Failed to process block:', error);
                 }
