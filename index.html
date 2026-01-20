@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v86-fillBounded-profiling',
+            VERSION: 'v87-cleanup-logs',
 
             // Display
             MAX_BLOCKS: 500,
@@ -628,12 +628,6 @@
 
             // Start render loop
             State.app.ticker.add(onTick);
-
-            console.log('PixiJS initialized', {
-                width: State.viewport.width,
-                height: State.viewport.height,
-                renderer: State.app.renderer.type === 1 ? 'WebGL' : 'WebGPU',
-            });
         }
 
         function onResize() {
@@ -928,25 +922,6 @@
         }
 
         /**
-         * Log dummy block status (throttled to avoid spam)
-         */
-        function logDummyStatus(force = false) {
-            const now = Date.now();
-            if (!force && now - State.lastDummyLog < 2000) return;  // Throttle to 2s
-            State.lastDummyLog = now;
-
-            if (!CONFIG.DUMMY.ENABLED) return;
-
-            console.log('[Dummy] Status:', {
-                enabled: CONFIG.DUMMY.ENABLED,
-                multiplier: CONFIG.DUMMY.MULTIPLIER,
-                totalGenerated: State.dummyBlockCount,
-                activeTips: State.dummyTips.size,
-                tips: Array.from(State.dummyTips.entries()).slice(0, 5),  // Show first 5
-            });
-        }
-
-        /**
          * Generate dummy blocks for high BPS simulation
          * Called after a real block is added
          */
@@ -1017,9 +992,6 @@
                 State.dummyTips.set(dummyHash, 0);
                 State.dummyBlockCount++;
             }
-
-            // Debug log (throttled)
-            logDummyStatus();
         }
 
         // ------------------------------------------------------------
@@ -1180,8 +1152,6 @@
         // calcConflictZoneWork: Calculate total work in conflict zone (dkoder: calc_conflict_zone_work)
         // Returns both zoneWork AND zoneBlocks for consistent kColouring
         function calcConflictZoneWork(genesisHash, subgroupHashes) {
-            const startTime = performance.now();
-            State.dagknight.perf.calcConflictZoneWork.calls++;
             let totalWork = 0n;
             const visited = new Set();
             const validBlocks = [];  // Blocks with valid idx
@@ -1243,7 +1213,6 @@
             State.dagknight.lastFirstBits = firstBitsValues;
             State.dagknight.lastTotalWorkDigits = totalWork > 0n ? totalWork.toString().length : 0;
 
-            State.dagknight.perf.calcConflictZoneWork.time += performance.now() - startTime;
             // Return only valid blocks for kColouring
             return { zoneWork: totalWork, zoneBlocks: validBlocks };
         }
@@ -1523,9 +1492,6 @@
         // fillBoundedGhostdagData: dkoder-aligned incremental processing
         // Process zone blocks using heap-based topological order (by blue_work)
         function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
-            const startTime = performance.now();
-            State.dagknight.perf.fillBounded.calls++;
-
             const zoneSet = new Set(zoneBlocks);
 
             // Step 1: Initialize stores
@@ -1699,7 +1665,6 @@
                 finalBlueWork: finalBlueWork.toString().length,  // digits
             };
 
-            State.dagknight.perf.fillBounded.time += performance.now() - startTime;
             return {
                 selectedParent: finalSelectedParent,
                 mergesetBlues: allMergesetBlues,
@@ -1922,15 +1887,11 @@
          * dkoder uses: store.get_interval(this)?.contains(store.get_interval(queried)?)
          */
         function computeIntervals(rootHash, blockSet) {
-            const startTime = performance.now();
-            State.dagknight.perf.computeIntervals.calls++;
-
             const { intervalMap } = State.dagknight;
             intervalMap.clear();
             State.dagknight.intervalCounter = 0;
 
             if (!rootHash || !blockSet || blockSet.size === 0) {
-                State.dagknight.perf.computeIntervals.time += performance.now() - startTime;
                 return;
             }
 
@@ -1976,8 +1937,6 @@
                     dfs(hash);
                 }
             }
-
-            State.dagknight.perf.computeIntervals.time += performance.now() - startTime;
         }
 
         /**
@@ -2004,27 +1963,16 @@
 
         // Step 2.2: Reachability - Check if blockA is ancestor of blockB
         function isAncestor(hashA, hashB, maxDepth = 100) {
-            const start = performance.now();
-            State.dagknight.perf.isAncestor.calls++;
-
-            if (hashA === hashB) {
-                State.dagknight.perf.isAncestor.time += performance.now() - start;
-                return true;
-            }
+            if (hashA === hashB) return true;
 
             // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
             const chainResult = isChainAncestor(hashA, hashB);
             if (chainResult === true) {
                 State.dagknight.intervalChainHits++;
-                State.dagknight.perf.isAncestor.time += performance.now() - start;
                 return true;
             }
             if (chainResult === false) {
-                // Interval says not chain ancestor - but might still be DAG ancestor
-                // For now, we use this as strong negative signal
-                // In full dkoder impl, would check future_covering_set here
                 State.dagknight.intervalChainHits++;
-                State.dagknight.perf.isAncestor.time += performance.now() - start;
                 return false;
             }
             // chainResult === null means no interval data, fall through to BFS
@@ -2032,11 +1980,8 @@
             // Check cache (dkoder optimization)
             const cacheKey = hashA + ':' + hashB;
             const cached = State.dagknight.ancestorCache.get(cacheKey);
-            if (cached !== undefined) {
-                State.dagknight.ancestorCacheHits++;
-                State.dagknight.perf.isAncestor.time += performance.now() - start;
-                return cached;
-            }
+            if (cached !== undefined) return cached;
+
             State.dagknight.intervalChainMisses++;  // Fell back to BFS
 
             const visited = new Set();
@@ -2048,15 +1993,12 @@
                 for (let i = 0; i < levelSize; i++) {
                     const currentHash = queue.shift();
                     if (currentHash === hashA) {
-                        // Cache positive result
                         State.dagknight.ancestorCache.set(cacheKey, true);
-                        State.dagknight.perf.isAncestor.time += performance.now() - start;
                         return true;
                     }
                     if (visited.has(currentHash)) continue;
                     visited.add(currentHash);
 
-                    // Get parents of current block
                     const idx = State.blockHashToIndex.get(currentHash);
                     if (idx === undefined) continue;
                     const parents = State.blockData.parentHashes[idx] || [];
@@ -2069,9 +2011,7 @@
                 depth++;
             }
 
-            // Cache negative result
             State.dagknight.ancestorCache.set(cacheKey, false);
-            State.dagknight.perf.isAncestor.time += performance.now() - start;
             return false;
         }
 
@@ -2620,15 +2560,6 @@
                 };
 
                 // --- DAGknight Coloring: Dynamic k-search with caching ---
-                // Reset perf counters for this calculation cycle
-                const dk = State.dagknight.perf;
-                dk.isAncestor = { calls: 0, time: 0 };
-                dk.commonChainAncestor = { calls: 0, time: 0 };
-                dk.calcConflictZoneWork = { calls: 0, time: 0 };
-                dk.computeIntervals = { calls: 0, time: 0 };
-                dk.fillBounded = { calls: 0, time: 0 };
-                dk.kColouring = { calls: 0, time: 0 };
-                dk.rank = { calls: 0, time: 0 };
                 // Reset interval-based reachability counters
                 State.dagknight.intervalChainHits = 0;
                 State.dagknight.intervalChainMisses = 0;
@@ -2888,11 +2819,9 @@
             try {
                 // Dynamic import of local Kaspa WASM SDK
                 const kaspa = await import('./kaspa-core.js');
-                console.log('kaspa-core.js imported');
 
                 // Initialize WASM binary
                 await kaspa.default({ module_or_path: './kaspa-core_bg.wasm' });
-                console.log('WASM binary initialized');
 
                 // Store kaspa module in state for later use
                 State.kaspa = kaspa;
@@ -2911,7 +2840,6 @@
 
                 // Get initial info
                 const info = await State.rpcClient.getBlockDagInfo();
-                console.log('Connected to Kaspa network:', info);
 
                 // Update UI
                 State.isConnected = true;
@@ -2952,8 +2880,6 @@
 
             // Start subscription
             await State.rpcClient.subscribeBlockAdded();
-
-            console.log('Subscribed to block notifications');
         }
 
         // ------------------------------------------------------------
@@ -2998,20 +2924,6 @@
                     line1 += ` | ERR: ${State.debug.error}`;
                 } else if (State.debug) {
                     line1 += ` | T:${State.debug.calcTime}ms`;
-                    const dk = State.dagknight.perf;
-                    line1 += ` | zoneW:${dk.calcConflictZoneWork.time.toFixed(0)}ms`;
-                    line1 += ` intv:${dk.computeIntervals.time.toFixed(0)}ms`;
-                    line1 += ` fill:${dk.fillBounded.calls}x/${dk.fillBounded.time.toFixed(0)}ms`;
-                    line1 += ` isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
-                    line1 += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
-                    line1 += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
-                    // Interval-based reachability stats (dkoder: O(1) vs BFS fallback)
-                    const intHit = State.dagknight.intervalChainHits;
-                    const intMiss = State.dagknight.intervalChainMisses;
-                    if (intHit > 0 || intMiss > 0) {
-                        const hitRate = intHit + intMiss > 0 ? ((intHit / (intHit + intMiss)) * 100).toFixed(0) : 0;
-                        line1 += ` | int:${hitRate}%`; // Interval hit rate
-                    }
                 }
                 lines.push(line1);
 
@@ -3159,7 +3071,6 @@
             DOM.btnDummyToggle.addEventListener('click', () => {
                 CONFIG.DUMMY.ENABLED = !CONFIG.DUMMY.ENABLED;
                 updateDummyUI();
-                console.log('[Dummy] Toggled:', CONFIG.DUMMY.ENABLED ? 'ON' : 'OFF');
             });
 
             DOM.btnDummy2x.addEventListener('click', () => {
@@ -3216,15 +3127,6 @@
                 setupControls();
                 await initKaspaSDK();
                 hideLoading();
-                console.log('DAGknight Visualizer initialized successfully');
-
-                // Log dummy block configuration
-                console.log('[Dummy] Configuration:', {
-                    enabled: CONFIG.DUMMY.ENABLED,
-                    multiplier: CONFIG.DUMMY.MULTIPLIER,
-                    maxParentSelect: CONFIG.DUMMY.MAX_PARENT_SELECT,
-                    effectiveBPS: CONFIG.DUMMY.ENABLED ? `${1 + CONFIG.DUMMY.MULTIPLIER}x` : '1x (real)',
-                });
             } catch (error) {
                 console.error('Initialization failed:', error);
                 updateLoadingText('Error: ' + error.message);
