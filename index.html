@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v72-chain-block-outline',
+            VERSION: 'v73-all-blocks-outline',
 
             // Display
             MAX_BLOCKS: 500,
@@ -710,10 +710,12 @@
                         .fill({ color: CONFIG.COLORS.BLUE_BLOCK })
                         .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 } else if (state === 1) {
-                    // Blue (confirmed but not on chain)
+                    // Blue (confirmed but not on chain) - with white outline
                     const blockSize = size[i] * zoom;
                     const halfSize = blockSize / 2;
-                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize)
+                        .fill({ color: CONFIG.COLORS.BLUE_BLOCK })
+                        .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 } else {
                     // Red (confirmed but not selected)
                     const blockSize = size[i] * zoom;
@@ -788,9 +790,9 @@
                 }
             }
 
-            // Fill all blocks (on top of edges)
+            // Fill blocks without outlines (pending, red)
+            // Blue blocks are filled individually with stroke in the loop above
             pendingBlocks.fill({ color: CONFIG.COLORS.PENDING_BLOCK });
-            blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
             redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
             // Draw LCCA block LAST (on top of everything)
@@ -805,8 +807,9 @@
                         lccaScreenY >= -50 && lccaScreenY <= height + 50) {
                         const lccaSize = 18 * zoom;  // Larger than chain blocks (14px)
                         const lccaHalfSize = lccaSize / 2;
-                        lcca.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize);
-                        lcca.fill({ color: CONFIG.COLORS.LCCA });  // Yellow/Gold
+                        lcca.rect(lccaScreenX - lccaHalfSize, lccaScreenY - lccaHalfSize, lccaSize, lccaSize)
+                            .fill({ color: CONFIG.COLORS.LCCA })  // Yellow/Gold
+                            .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                     }
                 }
             }
