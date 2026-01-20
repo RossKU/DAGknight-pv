@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v89-bps-2-3-10',
+            VERSION: 'v90-dynamic-dummy-rate',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2701,14 +2701,16 @@
             const parents = [...(parentsByLevel[0] || [])];  // Copy to avoid mutation
 
             // Phase 3: Add dummy tips as additional parents (high BPS simulation)
-            // Limited to MAX_DUMMY_PARENTS to prevent explosion
+            // Dynamic limit: MULTIPLIER * 2 to balance generation/consumption rate
+            // 2x: 2 parents, 3x: 4 parents, 10x: 18 parents
             if (CONFIG.DUMMY.ENABLED && State.dummyTips.size > 0) {
                 const dummyParentsToAdd = [];
                 let addedCount = 0;
+                const dynamicLimit = CONFIG.DUMMY.MULTIPLIER * 2;
 
                 for (const [dummyHash, selectCount] of State.dummyTips) {
-                    // Limit dummy parents per block
-                    if (addedCount >= CONFIG.DUMMY.MAX_DUMMY_PARENTS) break;
+                    // Limit dummy parents per block (dynamic based on multiplier)
+                    if (addedCount >= dynamicLimit) break;
 
                     // Add dummy as parent
                     dummyParentsToAdd.push(dummyHash);
