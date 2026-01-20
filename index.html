@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v95-250ms-interval',
+            VERSION: 'v96-zoom-right-anchor',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3006,12 +3006,24 @@
                 DOM.blockCount.textContent = '0';
             });
 
+            // Zoom with right edge as anchor point
+            function zoomWithRightAnchor(newZoom) {
+                const oldZoom = State.viewport.zoom;
+                const halfWidth = State.viewport.width / 2;
+                // Keep right edge at same world position
+                State.viewport.x += halfWidth * (1 / oldZoom - 1 / newZoom);
+                State.viewport.targetX = State.viewport.x;
+                State.viewport.zoom = newZoom;
+            }
+
             DOM.btnZoomIn.addEventListener('click', () => {
-                State.viewport.zoom = Math.min(State.viewport.zoom * 1.2, 3);
+                const newZoom = Math.min(State.viewport.zoom * 1.2, 3);
+                zoomWithRightAnchor(newZoom);
             });
 
             DOM.btnZoomOut.addEventListener('click', () => {
-                State.viewport.zoom = Math.max(State.viewport.zoom / 1.2, 0.2);
+                const newZoom = Math.max(State.viewport.zoom / 1.2, 0.2);
+                zoomWithRightAnchor(newZoom);
             });
 
             // Dummy block simulation controls
@@ -3069,11 +3081,12 @@
                 isDragging = false;
             });
 
-            // Zoom with mouse wheel
+            // Zoom with mouse wheel (right edge anchor)
             State.app.canvas.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-                State.viewport.zoom = Math.max(0.2, Math.min(3, State.viewport.zoom * zoomFactor));
+                const newZoom = Math.max(0.2, Math.min(3, State.viewport.zoom * zoomFactor));
+                zoomWithRightAnchor(newZoom);
             });
         }
 
