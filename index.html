@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v70-chain-edges-green',
+            VERSION: 'v71-edge-visibility',
 
             // Display
             MAX_BLOCKS: 500,
@@ -317,6 +317,7 @@
                 BACKGROUND: 0x0A0E17,
                 PENDING_BLOCK: 0x888888,  // Gray - not yet confirmed
                 BLUE_BLOCK: 0x4A90D9,
+                BLUE_EDGE: 0x7AB8E8,      // Lighter blue for finalized chain edges
                 RED_BLOCK: 0xE74C3C,
                 SELECTED_CHAIN: 0x00FF88,
                 LCCA: 0xFFD700,  // Gold/Yellow for LCCA
@@ -666,7 +667,7 @@
 
             // Stroke all edges at once
             if (edgeCount > 0) {
-                edges.stroke({ width: 1, color: CONFIG.COLORS.EDGE, alpha: 0.4 });
+                edges.stroke({ width: 2, color: CONFIG.COLORS.EDGE, alpha: 0.5 });
             }
 
             // Second pass: draw blocks (on top of edges)
@@ -755,7 +756,7 @@
                     }
                 }
                 if (blueDrawn) {
-                    chainEdges.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
+                    chainEdges.stroke({ width: 4, color: CONFIG.COLORS.BLUE_EDGE, alpha: 0.9 });
                 }
 
                 // Second pass: green edges (BOTH endpoints in active area - including tips)
