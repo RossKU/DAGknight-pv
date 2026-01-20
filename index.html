@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v92-skip-dummy-in-sp',
+            VERSION: 'v93-200ms-interval',
 
             // Display
             MAX_BLOCKS: 500,
@@ -386,7 +386,7 @@
             },
 
             // Performance
-            UPDATE_INTERVAL: 500,  // ms
+            UPDATE_INTERVAL: 200,  // ms (DAGknight calculation interval)
             TARGET_FPS: 60,
 
             // Network
@@ -651,8 +651,8 @@
                 updateStatsDisplay();
             }
 
-            // Run DAGknight calculation periodically (every 500ms)
-            if (now - State.lastDagknightCalc >= 500) {
+            // Run DAGknight calculation periodically
+            if (now - State.lastDagknightCalc >= CONFIG.UPDATE_INTERVAL) {
                 // Reset perf counters
                 State.perf.findLCCA = { calls: 0, time: 0 };
                 State.perf.selectParent = { calls: 0, time: 0 };
