@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v91-dummy-selected-parent',
+            VERSION: 'v92-skip-dummy-in-sp',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1022,14 +1022,19 @@
         // --- Step 1: Base Functions ---
 
         // findSelectedParent: Find parent with highest blueWork (dkoder: find_selected_parent)
+        // Skip dummy blocks - only select from real blocks
         function findSelectedParent(parentHashes) {
             if (!parentHashes || parentHashes.length === 0) return null;
-            if (parentHashes.length === 1) return parentHashes[0];
+
+            // Filter out dummies - selected chain should only contain real blocks
+            const realParents = parentHashes.filter(h => !isDummyHash(h));
+            if (realParents.length === 0) return null;
+            if (realParents.length === 1) return realParents[0];
 
             let selectedParent = null;
             let maxBlueWork = '';
 
-            for (const parentHash of parentHashes) {
+            for (const parentHash of realParents) {
                 const idx = State.blockHashToIndex.get(parentHash);
                 if (idx === undefined) continue;
 
@@ -1407,18 +1412,21 @@
         }
 
         // findSelectedParentFromStore: Find SP using stored blue_work (dkoder: find_selected_parent)
+        // Skip dummy blocks - only select from real blocks
         function findSelectedParentFromStore(parents, blueWorkStore) {
-            if (parents.length === 0) return null;
-            if (parents.length === 1) return parents[0];
+            // Filter out dummies - selected chain should only contain real blocks
+            const realParents = parents.filter(h => !isDummyHash(h));
+            if (realParents.length === 0) return null;
+            if (realParents.length === 1) return realParents[0];
 
-            let bestParent = parents[0];
-            let bestWork = blueWorkStore.get(parents[0]) || 0n;
+            let bestParent = realParents[0];
+            let bestWork = blueWorkStore.get(realParents[0]) || 0n;
 
-            for (let i = 1; i < parents.length; i++) {
-                const work = blueWorkStore.get(parents[i]) || 0n;
+            for (let i = 1; i < realParents.length; i++) {
+                const work = blueWorkStore.get(realParents[i]) || 0n;
                 if (work > bestWork) {
                     bestWork = work;
-                    bestParent = parents[i];
+                    bestParent = realParents[i];
                 }
             }
 
@@ -2151,16 +2159,22 @@
         }
 
         // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
+        // Skip dummy blocks - only select from real blocks
         function selectParent(parentHashes, depth = 0) {
-            if (depth > 10) return selectBestFromGroup(parentHashes);
-            if (parentHashes.length === 0) return null;
-            if (parentHashes.length === 1) return parentHashes[0];
+            // Filter out dummies at entry - selected chain should only contain real blocks
+            const realParents = depth === 0
+                ? parentHashes.filter(h => !isDummyHash(h))
+                : parentHashes;  // Already filtered in recursive calls
 
-            const lcca = findLCCA(parentHashes);
-            if (!lcca) return selectBestFromGroup(parentHashes);
+            if (depth > 10) return selectBestFromGroup(realParents);
+            if (realParents.length === 0) return null;
+            if (realParents.length === 1) return realParents[0];
 
-            const groups = groupByConflictZone(parentHashes, lcca);
-            if (groups.size <= 1) return selectBestFromGroup(parentHashes);
+            const lcca = findLCCA(realParents);
+            if (!lcca) return selectBestFromGroup(realParents);
+
+            const groups = groupByConflictZone(realParents, lcca);
+            if (groups.size <= 1) return selectBestFromGroup(realParents);
 
             const groupWinners = [];
             for (const [origin, members] of groups.entries()) {
