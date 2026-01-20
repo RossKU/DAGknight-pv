@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v93-200ms-interval',
+            VERSION: 'v94-thinner-edges',
 
             // Display
             MAX_BLOCKS: 500,
@@ -845,7 +845,7 @@
                     }
                 }
                 if (blueDrawn) {
-                    chainEdges.stroke({ width: 4, color: CONFIG.COLORS.BLUE_EDGE, alpha: 0.9 });
+                    chainEdges.stroke({ width: 3, color: CONFIG.COLORS.BLUE_EDGE, alpha: 0.9 });
                 }
 
                 // Second pass: green edges (BOTH endpoints in active area - including tips)
@@ -867,7 +867,7 @@
                     }
                 }
                 if (greenDrawn) {
-                    chainEdges.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
+                    chainEdges.stroke({ width: 2, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 0.8 });
                 }
             }
 
