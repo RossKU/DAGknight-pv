@@ -326,8 +326,8 @@
             <button id="btn-dummy-toggle">OFF</button>
             <span class="label">×</span>
             <button id="btn-dummy-2x" class="multiplier selected">2</button>
+            <button id="btn-dummy-3x" class="multiplier">3</button>
             <button id="btn-dummy-10x" class="multiplier">10</button>
-            <button id="btn-dummy-100x" class="multiplier">100</button>
         </div>
 
         <div id="controls">
@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v88-remove-profiling',
+            VERSION: 'v89-bps-2-3-10',
 
             // Display
             MAX_BLOCKS: 500,
@@ -398,7 +398,7 @@
             // High BPS Simulation (Dummy Blocks)
             DUMMY: {
                 ENABLED: false,        // Toggle dummy block generation
-                MULTIPLIER: 1,         // +1=2x, +9=10x, +99=100x BPS
+                MULTIPLIER: 1,         // +1=2x, +2=3x, +9=10x BPS
                 MAX_PARENT_SELECT: 2,  // Dummy removed from tips after this many selections
                 MAX_DUMMY_PARENTS: 2,  // Max dummy tips to add as parents per block
             },
@@ -576,8 +576,8 @@
             // Dummy controls
             btnDummyToggle: document.getElementById('btn-dummy-toggle'),
             btnDummy2x: document.getElementById('btn-dummy-2x'),
+            btnDummy3x: document.getElementById('btn-dummy-3x'),
             btnDummy10x: document.getElementById('btn-dummy-10x'),
-            btnDummy100x: document.getElementById('btn-dummy-100x'),
         };
 
         // ------------------------------------------------------------
@@ -968,9 +968,18 @@
                 State.blockData.targetX[index] = State.blockData.x[index];
                 State.blockData.linearIndex[index] = -1;
 
-                // BlueWork: same as original (will be lower priority due to hash)
+                // BlueWork: subtract (i+1) to make each dummy unique and lower priority
                 State.blockData.blueScore[index] = Number(originalBlock.header.blueScore || 0);
-                State.blockData.blueWork[index] = originalBlueWork;
+                // Parse hex blueWork, subtract to ensure unique values
+                let dummyBlueWork = originalBlueWork;
+                try {
+                    const bwBigInt = BigInt('0x' + originalBlueWork);
+                    const adjusted = bwBigInt - BigInt(i + 1);
+                    dummyBlueWork = adjusted > 0n ? adjusted.toString(16) : '0';
+                } catch (e) {
+                    // Keep original if parsing fails
+                }
+                State.blockData.blueWork[index] = dummyBlueWork;
                 State.blockData.bits[index] = originalBits;
 
                 // Color: Start as Pending
@@ -2990,8 +2999,8 @@
                 // Update multiplier buttons
                 const mult = CONFIG.DUMMY.MULTIPLIER;
                 DOM.btnDummy2x.classList.toggle('selected', mult === 1);
+                DOM.btnDummy3x.classList.toggle('selected', mult === 2);
                 DOM.btnDummy10x.classList.toggle('selected', mult === 9);
-                DOM.btnDummy100x.classList.toggle('selected', mult === 99);
             }
 
             DOM.btnDummyToggle.addEventListener('click', () => {
@@ -3004,13 +3013,13 @@
                 updateDummyUI();
             });
 
-            DOM.btnDummy10x.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 9;  // +9 = 10x BPS
+            DOM.btnDummy3x.addEventListener('click', () => {
+                CONFIG.DUMMY.MULTIPLIER = 2;  // +2 = 3x BPS
                 updateDummyUI();
             });
 
-            DOM.btnDummy100x.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 99;  // +99 = 100x BPS
+            DOM.btnDummy10x.addEventListener('click', () => {
+                CONFIG.DUMMY.MULTIPLIER = 9;  // +9 = 10x BPS
                 updateDummyUI();
             });
 
