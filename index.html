@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v74-outline-chain-lcca-only',
+            VERSION: 'v75-all-blocks-outline',
 
             // Display
             MAX_BLOCKS: 500,
@@ -710,15 +710,19 @@
                         .fill({ color: CONFIG.COLORS.BLUE_BLOCK })
                         .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 } else if (state === 1) {
-                    // Blue (confirmed but not on chain) - no outline
+                    // Blue (confirmed but not on chain) - with white outline
                     const blockSize = size[i] * zoom;
                     const halfSize = blockSize / 2;
-                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    blueBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize)
+                        .fill({ color: CONFIG.COLORS.BLUE_BLOCK })
+                        .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 } else {
-                    // Red (confirmed but not selected)
+                    // Red (confirmed but not selected) - with white outline
                     const blockSize = size[i] * zoom;
                     const halfSize = blockSize / 2;
-                    redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize);
+                    redBlocks.rect(screenX - halfSize, screenY - halfSize, blockSize, blockSize)
+                        .fill({ color: CONFIG.COLORS.RED_BLOCK })
+                        .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                 }
 
                 visibleCount++;
@@ -788,11 +792,9 @@
                 }
             }
 
-            // Fill blocks without outlines (pending, blue, red)
-            // Chain blocks and LCCA are filled individually with stroke
+            // Fill pending blocks (no outline)
+            // Blue, red, chain, LCCA are filled individually with stroke
             pendingBlocks.fill({ color: CONFIG.COLORS.PENDING_BLOCK });
-            blueBlocks.fill({ color: CONFIG.COLORS.BLUE_BLOCK });
-            redBlocks.fill({ color: CONFIG.COLORS.RED_BLOCK });
 
             // Draw LCCA block LAST (on top of everything)
             if (State.lccaHash) {
