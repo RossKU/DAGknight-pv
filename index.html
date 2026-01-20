@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v82-interval-reachability',
+            VERSION: 'v83-fix-dummy-gen-limit',
 
             // Display
             MAX_BLOCKS: 500,
@@ -950,7 +950,7 @@
          */
         function generateDummyBlocks(originalBlock) {
             if (!CONFIG.DUMMY.ENABLED) return;
-            if (State.blockCount >= CONFIG.MAX_BLOCKS - CONFIG.DUMMY.MULTIPLIER) return;  // Safety margin
+            // Note: Ring buffer handles overflow, no need for safety margin
 
             const originalHash = originalBlock.header.hash;
             const originalDaaScore = Number(originalBlock.header.daaScore);
