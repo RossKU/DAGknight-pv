@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v76-dummy-phase1',
+            VERSION: 'v77-dummy-debug-panel',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2749,6 +2749,17 @@
                         line6 += ` pass:${stats.passed}`;
                         lines.push(line6);
                     }
+                }
+
+                // Line 7: Dummy block simulation status
+                if (CONFIG.DUMMY.ENABLED) {
+                    const effectiveBPS = 1 + CONFIG.DUMMY.MULTIPLIER;
+                    let lineDummy = `[DUMMY] ${effectiveBPS}x BPS`;
+                    lineDummy += ` | gen:${State.dummyBlockCount}`;
+                    lineDummy += ` tips:${State.dummyTips.size}`;
+                    lines.push(lineDummy);
+                } else {
+                    lines.push(`[DUMMY] OFF`);
                 }
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
