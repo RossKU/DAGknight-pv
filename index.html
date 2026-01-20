@@ -32,6 +32,7 @@
             position: absolute;
             top: 0;
             left: 0;
+            touch-action: none;  /* Disable browser touch handling */
         }
 
         /* Status overlay */
@@ -359,7 +360,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v97-touch-support',
+            VERSION: 'v98-fix-touch-drag',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3085,6 +3086,7 @@
 
             // Touch events (mobile)
             State.app.canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
                 if (e.touches.length === 1) {
                     isDragging = true;
                     lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -3095,9 +3097,10 @@
                     const dy = e.touches[1].clientY - e.touches[0].clientY;
                     lastPinchDist = Math.sqrt(dx * dx + dy * dy);
                 }
-            }, { passive: true });
+            }, { passive: false });
 
             State.app.canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
                 if (e.touches.length === 1 && isDragging) {
                     // Single finger drag
                     const dx = (e.touches[0].clientX - lastMouse.x) / State.viewport.zoom;
@@ -3115,7 +3118,7 @@
                     zoomWithRightAnchor(newZoom);
                     lastPinchDist = dist;
                 }
-            }, { passive: true });
+            }, { passive: false });
 
             State.app.canvas.addEventListener('touchend', () => {
                 isDragging = false;
