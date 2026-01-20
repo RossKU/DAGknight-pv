@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v80-dummy-phase3',
+            VERSION: 'v81-limit-dummy-parents',
 
             // Display
             MAX_BLOCKS: 500,
@@ -400,6 +400,7 @@
                 ENABLED: false,        // Toggle dummy block generation
                 MULTIPLIER: 1,         // +1=2x, +9=10x, +99=100x BPS
                 MAX_PARENT_SELECT: 2,  // Dummy removed from tips after this many selections
+                MAX_DUMMY_PARENTS: 2,  // Max dummy tips to add as parents per block
             },
         };
 
@@ -2692,11 +2693,18 @@
             const parents = [...(parentsByLevel[0] || [])];  // Copy to avoid mutation
 
             // Phase 3: Add dummy tips as additional parents (high BPS simulation)
+            // Limited to MAX_DUMMY_PARENTS to prevent explosion
             if (CONFIG.DUMMY.ENABLED && State.dummyTips.size > 0) {
                 const dummyParentsToAdd = [];
+                let addedCount = 0;
+
                 for (const [dummyHash, selectCount] of State.dummyTips) {
+                    // Limit dummy parents per block
+                    if (addedCount >= CONFIG.DUMMY.MAX_DUMMY_PARENTS) break;
+
                     // Add dummy as parent
                     dummyParentsToAdd.push(dummyHash);
+                    addedCount++;
 
                     // Increment select count
                     const newCount = selectCount + 1;
@@ -2707,7 +2715,7 @@
                         State.dummyTips.set(dummyHash, newCount);
                     }
                 }
-                // Add all dummy parents to the block's parents
+                // Add limited dummy parents to the block's parents
                 parents.push(...dummyParentsToAdd);
             }
 
