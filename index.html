@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v79-dummy-phase2',
+            VERSION: 'v80-dummy-phase3',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2689,7 +2689,28 @@
             // Store parent hashes (resolved dynamically in renderDAG)
             // WASM SDK uses parentsByLevel - only use level 0 (direct parents)
             const parentsByLevel = blockInfo.header.parentsByLevel || [];
-            const parents = parentsByLevel[0] || [];
+            const parents = [...(parentsByLevel[0] || [])];  // Copy to avoid mutation
+
+            // Phase 3: Add dummy tips as additional parents (high BPS simulation)
+            if (CONFIG.DUMMY.ENABLED && State.dummyTips.size > 0) {
+                const dummyParentsToAdd = [];
+                for (const [dummyHash, selectCount] of State.dummyTips) {
+                    // Add dummy as parent
+                    dummyParentsToAdd.push(dummyHash);
+
+                    // Increment select count
+                    const newCount = selectCount + 1;
+                    if (newCount >= CONFIG.DUMMY.MAX_PARENT_SELECT) {
+                        // Remove from tips (has been selected enough times)
+                        State.dummyTips.delete(dummyHash);
+                    } else {
+                        State.dummyTips.set(dummyHash, newCount);
+                    }
+                }
+                // Add all dummy parents to the block's parents
+                parents.push(...dummyParentsToAdd);
+            }
+
             State.blockData.parentHashes[index] = parents;
 
             // DAGknight: Block starts as Pending (gray)
