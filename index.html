@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v69-tips-pending',
+            VERSION: 'v70-chain-edges-green',
 
             // Display
             MAX_BLOCKS: 500,
@@ -718,11 +718,11 @@
             }
 
             // Draw Selected Chain edges FIRST (behind blocks)
-            // dkoder: Pending edges (tip connections) = gray
-            // Green = BOTH endpoints confirmed AND in active area
-            // Blue = confirmed but in finalized area
+            // dkoder: Selected chain is determined by blueWork, known immediately even for tips
+            // Green = active area (LCCA to tips) - chain structure is known
+            // Blue = finalized area (before LCCA) - confirmed and stable
             if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
-                const { targetX, confirmationState } = State.blockData;
+                const { targetX } = State.blockData;
 
                 // Get LCCA's targetX for comparison (stable, not animated)
                 let lccaTargetX = -Infinity;
@@ -735,39 +735,15 @@
 
                 let blueDrawn = false;
                 let greenDrawn = false;
-                let grayDrawn = false;
 
-                // First pass: gray edges (either endpoint is pending/tip)
+                // First pass: blue edges (at least one endpoint in finalized area)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const eitherPending = confirmationState[idx1] === 0 || confirmationState[idx2] === 0;
-                        if (eitherPending) {
-                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
-                            chainEdges.moveTo(screenX1, screenY1);
-                            chainEdges.lineTo(screenX2, screenY2);
-                            grayDrawn = true;
-                        }
-                    }
-                }
-                if (grayDrawn) {
-                    chainEdges.stroke({ width: 2, color: CONFIG.COLORS.PENDING_BLOCK, alpha: 0.6 });
-                }
-
-                // Second pass: blue edges (both confirmed, at least one in finalized area)
-                for (const [fromHash, toHash] of State.selectedChainEdges) {
-                    const idx1 = State.blockHashToIndex.get(fromHash);
-                    const idx2 = State.blockHashToIndex.get(toHash);
-
-                    if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothConfirmed = confirmationState[idx1] !== 0 && confirmationState[idx2] !== 0;
                         const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
-                        if (bothConfirmed && !bothInActive) {
+                        if (!bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
@@ -782,15 +758,14 @@
                     chainEdges.stroke({ width: 4, color: CONFIG.COLORS.BLUE_BLOCK, alpha: 0.9 });
                 }
 
-                // Third pass: green edges (BOTH confirmed AND in active area)
+                // Second pass: green edges (BOTH endpoints in active area - including tips)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
 
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothConfirmed = confirmationState[idx1] !== 0 && confirmationState[idx2] !== 0;
                         const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
-                        if (bothConfirmed && bothInActive) {
+                        if (bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
                             const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
