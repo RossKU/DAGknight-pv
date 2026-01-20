@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v87-cleanup-logs',
+            VERSION: 'v88-remove-profiling',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1058,17 +1058,8 @@
 
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
         function commonChainAncestor(hashes) {
-            const start = performance.now();
-            State.dagknight.perf.commonChainAncestor.calls++;
-
-            if (!hashes || hashes.length === 0) {
-                State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
-                return null;
-            }
-            if (hashes.length === 1) {
-                State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
-                return hashes[0];
-            }
+            if (!hashes || hashes.length === 0) return null;
+            if (hashes.length === 1) return hashes[0];
 
             // Build Selected Parent Chain for each hash
             const chains = hashes.map(hash => {
@@ -1076,14 +1067,13 @@
                 let current = hash;
                 const visited = new Set([hash]);
 
-                for (let i = 0; i < 200; i++) {  // Max depth
+                for (let i = 0; i < 200; i++) {
                     const idx = State.blockHashToIndex.get(current);
                     if (idx === undefined) break;
 
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
 
-                    // Find selected parent (highest blueWork)
                     const sp = findSelectedParent(parents);
                     if (!sp || visited.has(sp)) break;
 
@@ -1095,7 +1085,6 @@
             });
 
             // Find first common element in all chains
-            const firstChainSet = new Set(chains[0]);
             for (const hash of chains[0]) {
                 let isCommon = true;
                 for (let i = 1; i < chains.length; i++) {
@@ -1104,13 +1093,9 @@
                         break;
                     }
                 }
-                if (isCommon) {
-                    State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
-                    return hash;
-                }
+                if (isCommon) return hash;
             }
 
-            State.dagknight.perf.commonChainAncestor.time += performance.now() - start;
             return null;
         }
 
@@ -1325,22 +1310,15 @@
         // kColouring: Perform k-colouring on parents (dkoder: k_colouring)
         // With caching to avoid redundant calculations
         function kColouring(parentHashes, k, selectedParentOverride = null) {
-            const start = performance.now();
-            State.dagknight.perf.kColouring.calls++;
-
             const selectedParent = selectedParentOverride || findSelectedParent(parentHashes);
             if (!selectedParent) {
-                State.dagknight.perf.kColouring.time += performance.now() - start;
                 return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
             }
 
             // Cache key: sorted parents + k
             const cacheKey = parentHashes.slice().sort().join(',') + ':' + k;
             const cached = State.dagknight.kColouringCache.get(cacheKey);
-            if (cached) {
-                State.dagknight.perf.kColouring.time += performance.now() - start;
-                return cached;
-            }
+            if (cached) return cached;
 
             const mergeset = orderedMergesetWithoutSelectedParent(selectedParent, parentHashes);
             const mergesetBlues = new Set();
@@ -1381,7 +1359,6 @@
                 State.dagknight.kColouringCache.set(cacheKey, result);
             }
 
-            State.dagknight.perf.kColouring.time += performance.now() - start;
             return result;
         }
 
@@ -1573,9 +1550,7 @@
                     // Get mergeset (anticone of SP among parents in store)
                     const mergeset = getMergesetBounded(selectedParent, parentsInStore, blockHash);
 
-                    // k-colouring on mergeset (track perf like old kColouring)
-                    const kColStart = performance.now();
-                    State.dagknight.perf.kColouring.calls++;
+                    // k-colouring on mergeset
                     const mergesetBlues = [];
                     const mergesetReds = [];
 
@@ -1593,7 +1568,6 @@
                             blueStatusStore.set(candidate, 'red');
                         }
                     }
-                    State.dagknight.perf.kColouring.time += performance.now() - kColStart;
 
                     mergesetBluesStore.set(blockHash, mergesetBlues);
                     mergesetRedsStore.set(blockHash, mergesetReds);
@@ -1679,57 +1653,37 @@
         // rank: Determine ranking by searching k-space (dkoder: rank)
         // Optimized: limit k search to 32 (usually k=0-5 is enough)
         function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
-            const start = performance.now();
-            State.dagknight.perf.rank.calls++;
-
             // Search for minimal k where blueWork >= zoneWork / 2
             const halfZoneWork = zoneWork / 2n;
-
-            // Optimization: limit k search (increased to 64 for debugging)
             const MAX_K = 64;
 
-            // Debug: track parent count
             State.dagknight.lastParentCount = subgroup.length;
-
-            // Track blues at k=0 for comparison
             let bluesAtK0 = 0;
 
             for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
-                // Track k=0 blues
-                if (k === 0) {
-                    bluesAtK0 = data.blueCount;
-                }
+                if (k === 0) bluesAtK0 = data.blueCount;
 
-                // Debug: track zone/blue work and blue count
                 State.dagknight.lastZoneWork = zoneWork.toString();
                 State.dagknight.lastBlueWork = data.blueWork.toString();
                 State.dagknight.lastBlueCount = data.blueCount;
 
                 if (data.blueWork >= halfZoneWork) {
                     State.dagknight.lastK = k;
-                    State.dagknight.lastKFound = true;  // Condition met!
+                    State.dagknight.lastKFound = true;
                     State.dagknight.lastBluesAtK0 = bluesAtK0;
-                    State.dagknight.perf.rank.time += performance.now() - start;
-                    return {
-                        k,
-                        subgroupVirtual: data,
-                    };
+                    return { k, subgroupVirtual: data };
                 }
             }
 
-            // Fallback: use MAX_K (if still not found, something is wrong)
+            // Fallback: use MAX_K
             const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
             State.dagknight.lastK = MAX_K;
-            State.dagknight.lastKFound = false;  // Fallback - condition never met
+            State.dagknight.lastKFound = false;
             State.dagknight.lastBlueCount = fallbackData.blueCount;
             State.dagknight.lastBluesAtK0 = bluesAtK0;
-            State.dagknight.perf.rank.time += performance.now() - start;
-            return {
-                k: MAX_K,
-                subgroupVirtual: fallbackData,
-            };
+            return { k: MAX_K, subgroupVirtual: fallbackData };
         }
 
         // dagknight: Main parent selection (dkoder: dagknight)
@@ -2017,14 +1971,10 @@
 
         // Step 2.3: Find Latest Common Chain Ancestor (LCCA)
         function findLCCA(hashes) {
-            const start = performance.now();
-            State.perf.findLCCA.calls++;
-            if (hashes.length === 0) { State.perf.findLCCA.time += performance.now() - start; return null; }
-            if (hashes.length === 1) { State.perf.findLCCA.time += performance.now() - start; return hashes[0]; }
+            if (hashes.length === 0) return null;
+            if (hashes.length === 1) return hashes[0];
 
-            // Build Selected Parent Chain for each hash (dkoder compliant)
-            // Follow ONLY the selected parent (highest blue_work) at each step
-            // Uses cache to avoid repeated blue_work comparisons
+            // Build Selected Parent Chain for each hash
             const chains = hashes.map(hash => {
                 const chain = new Set([hash]);
                 let current = hash;
@@ -2034,16 +1984,10 @@
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
 
-                    // Check cache first (dkoder optimization)
                     let selectedParent = State.selectedParentCache.get(current);
                     if (selectedParent === undefined) {
-                        // Not in cache, compute and store
                         selectedParent = selectBestFromGroup(parents);
-                        if (selectedParent) {
-                            State.selectedParentCache.set(current, selectedParent);
-                        }
-                    } else {
-                        State.perf.cacheHits++;
+                        if (selectedParent) State.selectedParentCache.set(current, selectedParent);
                     }
 
                     if (!selectedParent || chain.has(selectedParent)) break;
@@ -2053,13 +1997,13 @@
                 return chain;
             });
 
-            // Find common blocks across all Selected Parent Chains
+            // Find common blocks across all chains
             let common = chains[0];
             for (let i = 1; i < chains.length; i++) {
                 common = new Set([...common].filter(x => chains[i].has(x)));
             }
 
-            // Return the one with highest DAA score (latest = LCCA)
+            // Return the one with highest DAA score
             let lcca = null;
             let maxDaa = -1;
             for (const hash of common) {
@@ -2072,7 +2016,6 @@
                     }
                 }
             }
-            State.perf.findLCCA.time += performance.now() - start;
             return lcca;
         }
 
@@ -2178,10 +2121,8 @@
 
         // Step 2.6: Select best block from a group using RankValue
         function selectBestFromGroup(blockHashes) {
-            const start = performance.now();
-            State.perf.selectBest.calls++;
-            if (blockHashes.length === 0) { State.perf.selectBest.time += performance.now() - start; return null; }
-            if (blockHashes.length === 1) { State.perf.selectBest.time += performance.now() - start; return blockHashes[0]; }
+            if (blockHashes.length === 0) return null;
+            if (blockHashes.length === 1) return blockHashes[0];
 
             let best = blockHashes[0];
             for (let i = 1; i < blockHashes.length; i++) {
@@ -2189,42 +2130,27 @@
                     best = blockHashes[i];
                 }
             }
-            State.perf.selectBest.time += performance.now() - start;
             return best;
         }
 
         // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
         function selectParent(parentHashes, depth = 0) {
-            const start = performance.now();
-            State.perf.selectParent.calls++;
-            // Prevent infinite recursion
-            if (depth > 10) { State.perf.selectParent.time += performance.now() - start; return selectBestFromGroup(parentHashes); }
+            if (depth > 10) return selectBestFromGroup(parentHashes);
+            if (parentHashes.length === 0) return null;
+            if (parentHashes.length === 1) return parentHashes[0];
 
-            if (parentHashes.length === 0) { State.perf.selectParent.time += performance.now() - start; return null; }
-            if (parentHashes.length === 1) { State.perf.selectParent.time += performance.now() - start; return parentHashes[0]; }
-
-            // Find LCCA
             const lcca = findLCCA(parentHashes);
-            if (!lcca) { State.perf.selectParent.time += performance.now() - start; return selectBestFromGroup(parentHashes); }
+            if (!lcca) return selectBestFromGroup(parentHashes);
 
-            // Group by conflict zone
             const groups = groupByConflictZone(parentHashes, lcca);
+            if (groups.size <= 1) return selectBestFromGroup(parentHashes);
 
-            // If only one group, select best from that group
-            if (groups.size <= 1) {
-                State.perf.selectParent.time += performance.now() - start;
-                return selectBestFromGroup(parentHashes);
-            }
-
-            // Select best block from each group
             const groupWinners = [];
             for (const [origin, members] of groups.entries()) {
                 const winner = selectBestFromGroup(members);
                 if (winner) groupWinners.push(winner);
             }
 
-            // Recursively select among group winners (with depth limit)
-            State.perf.selectParent.time += performance.now() - start;
             return selectParent(groupWinners, depth + 1);
         }
 
