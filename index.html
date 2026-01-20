@@ -301,7 +301,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v75-all-blocks-outline',
+            VERSION: 'v76-dummy-phase1',
 
             // Display
             MAX_BLOCKS: 500,
@@ -336,6 +336,13 @@
                 'wss://kaspa.aspectron.org/mainnet/wrpc/borsh',
                 'wss://kaspa.matryx.io/mainnet/wrpc/borsh',
             ],
+
+            // High BPS Simulation (Dummy Blocks)
+            DUMMY: {
+                ENABLED: false,        // Toggle dummy block generation
+                MULTIPLIER: 1,         // +1=2x, +9=10x, +99=100x BPS
+                MAX_PARENT_SELECT: 2,  // Dummy removed from tips after this many selections
+            },
         };
 
         // ------------------------------------------------------------
@@ -368,6 +375,11 @@
             },
             blockCount: 0,
             blockHashToIndex: new Map(),
+
+            // High BPS Simulation (Dummy Blocks)
+            dummyTips: new Map(),      // Map<dummyHash, selectCount> - tracks how many times selected as parent
+            dummyBlockCount: 0,        // Total dummy blocks generated
+            lastDummyLog: 0,           // Throttle debug logging
 
             // Ring buffer pointers
             ringHead: 0,
@@ -819,6 +831,46 @@
             State.stats.drawCalls = 4; // edges + blue blocks + red blocks + chain
             State.stats.visibleBlocks = visibleCount;
             State.stats.edgeCount = edgeCount;
+        }
+
+        // ------------------------------------------------------------
+        // High BPS Simulation (Dummy Block Generation)
+        // ------------------------------------------------------------
+
+        /**
+         * Generate a unique dummy hash from original block hash
+         * Format: 0dummy_{original}_{index}
+         * - '0dummy' prefix ensures it's lexicographically smaller than real hashes
+         * - This makes real blocks preferred in selected parent selection
+         */
+        function generateDummyHash(originalHash, index) {
+            return `0dummy_${originalHash.substring(0, 16)}_${index}`;
+        }
+
+        /**
+         * Check if a hash is a dummy block
+         */
+        function isDummyHash(hash) {
+            return hash && hash.startsWith('0dummy_');
+        }
+
+        /**
+         * Log dummy block status (throttled to avoid spam)
+         */
+        function logDummyStatus(force = false) {
+            const now = Date.now();
+            if (!force && now - State.lastDummyLog < 2000) return;  // Throttle to 2s
+            State.lastDummyLog = now;
+
+            if (!CONFIG.DUMMY.ENABLED) return;
+
+            console.log('[Dummy] Status:', {
+                enabled: CONFIG.DUMMY.ENABLED,
+                multiplier: CONFIG.DUMMY.MULTIPLIER,
+                totalGenerated: State.dummyBlockCount,
+                activeTips: State.dummyTips.size,
+                tips: Array.from(State.dummyTips.entries()).slice(0, 5),  // Show first 5
+            });
         }
 
         // ------------------------------------------------------------
@@ -2797,6 +2849,14 @@
                 await initKaspaSDK();
                 hideLoading();
                 console.log('DAGknight Visualizer initialized successfully');
+
+                // Log dummy block configuration
+                console.log('[Dummy] Configuration:', {
+                    enabled: CONFIG.DUMMY.ENABLED,
+                    multiplier: CONFIG.DUMMY.MULTIPLIER,
+                    maxParentSelect: CONFIG.DUMMY.MAX_PARENT_SELECT,
+                    effectiveBPS: CONFIG.DUMMY.ENABLED ? `${1 + CONFIG.DUMMY.MULTIPLIER}x` : '1x (real)',
+                });
             } catch (error) {
                 console.error('Initialization failed:', error);
                 updateLoadingText('Error: ' + error.message);
