@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v90-dynamic-dummy-rate',
+            VERSION: 'v91-dummy-selected-parent',
 
             // Display
             MAX_BLOCKS: 500,
@@ -982,14 +982,22 @@
                 State.blockData.blueWork[index] = dummyBlueWork;
                 State.blockData.bits[index] = originalBits;
 
-                // Color: Start as Pending
-                State.blockData.color[index] = CONFIG.COLORS.PENDING_BLOCK;
+                // Color: Blue (dummies are treated as blue blocks)
+                State.blockData.color[index] = CONFIG.COLORS.BLUE_BLOCK;
                 State.blockData.confirmationState[index] = 0;
                 State.blockData.isBlue[index] = 1;
                 State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
                 // Parents: same as original
                 State.blockData.parentHashes[index] = [...originalParents];
+
+                // Calculate Selected Parent (highest BlueWork) and add green edge
+                const selectedParent = findSelectedParent(originalParents);
+                if (selectedParent) {
+                    // Add dummy -> selectedParent edge for chain visualization
+                    if (!State.selectedChainEdges) State.selectedChainEdges = [];
+                    State.selectedChainEdges.push([dummyHash, selectedParent]);
+                }
 
                 // Update ring buffer
                 State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
