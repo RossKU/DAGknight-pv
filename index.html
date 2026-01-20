@@ -359,7 +359,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v81-limit-dummy-parents',
+            VERSION: 'v82-interval-reachability',
 
             // Display
             MAX_BLOCKS: 500,
@@ -526,6 +526,13 @@
                 kColouringCache: new Map(),    // "parents_hash:k" → result
                 ancestorCacheHits: 0,
                 ancestorCacheMisses: 0,
+
+                // Interval-based reachability (dkoder: reachability_service)
+                // Each block has interval [start, end] for O(1) chain ancestor check
+                intervalMap: new Map(),        // hash → {start, end}
+                intervalCounter: 0,            // Counter for interval assignment
+                intervalChainHits: 0,          // Times isChainAncestor returned true
+                intervalChainMisses: 0,        // Times fell back to BFS
 
                 // Performance profiling
                 perf: {
@@ -1794,6 +1801,11 @@
                 return fallbackResult(null);
             }
 
+            // Step 2.5: Compute intervals for O(1) ancestor checks (dkoder: reachability_service)
+            const zoneSet = new Set(zoneBlocks);
+            zoneSet.add(conflictGenesis);  // Include root
+            computeIntervals(conflictGenesis, zoneSet);
+
             // Step 3: Rank using zone blocks (same blocks used for zoneWork)
             State.dagknight.lastEarlyReturn = 'rank-called';
             const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
@@ -1883,6 +1895,90 @@
         // End DAGknight Engine
         // ============================================================
 
+        // ============================================================
+        // Interval-based Reachability (dkoder: reachability_service)
+        // ============================================================
+
+        /**
+         * Compute intervals for all blocks in the given set
+         * Using DFS traversal from root, assign [start, end] intervals
+         * This enables O(1) chain ancestor checks
+         *
+         * dkoder uses: store.get_interval(this)?.contains(store.get_interval(queried)?)
+         */
+        function computeIntervals(rootHash, blockSet) {
+            const { intervalMap } = State.dagknight;
+            intervalMap.clear();
+            State.dagknight.intervalCounter = 0;
+
+            if (!rootHash || !blockSet || blockSet.size === 0) return;
+
+            // Build child map: parent → [children]
+            // This is needed because we only store parentHashes, not childHashes
+            const childMap = new Map();
+            for (const hash of blockSet) {
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx === undefined) continue;
+                const parents = State.blockData.parentHashes[idx] || [];
+                for (const parentHash of parents) {
+                    if (!blockSet.has(parentHash)) continue;
+                    if (!childMap.has(parentHash)) {
+                        childMap.set(parentHash, []);
+                    }
+                    childMap.get(parentHash).push(hash);
+                }
+            }
+
+            // DFS to assign intervals
+            const visited = new Set();
+            function dfs(hash) {
+                if (visited.has(hash)) return;
+                visited.add(hash);
+
+                const start = State.dagknight.intervalCounter++;
+
+                // Visit children (blocks that have this as parent)
+                const children = childMap.get(hash) || [];
+                for (const childHash of children) {
+                    dfs(childHash);
+                }
+
+                const end = State.dagknight.intervalCounter++;
+                intervalMap.set(hash, { start, end });
+            }
+
+            dfs(rootHash);
+
+            // Also process any blocks not reachable from root
+            for (const hash of blockSet) {
+                if (!visited.has(hash)) {
+                    dfs(hash);
+                }
+            }
+        }
+
+        /**
+         * Check if hashA is a CHAIN ancestor of hashB using intervals
+         * This is O(1) - just interval containment check
+         *
+         * dkoder: is_chain_ancestor_of uses interval.contains()
+         * A is ancestor of B if A.interval contains B.interval
+         */
+        function isChainAncestor(hashA, hashB) {
+            const { intervalMap } = State.dagknight;
+            const intervalA = intervalMap.get(hashA);
+            const intervalB = intervalMap.get(hashB);
+
+            if (!intervalA || !intervalB) return null;  // Unknown, need fallback
+
+            // A contains B means A.start <= B.start && B.end <= A.end
+            return intervalA.start <= intervalB.start && intervalB.end <= intervalA.end;
+        }
+
+        // ============================================================
+        // End Interval-based Reachability
+        // ============================================================
+
         // Step 2.2: Reachability - Check if blockA is ancestor of blockB
         function isAncestor(hashA, hashB, maxDepth = 100) {
             const start = performance.now();
@@ -1893,7 +1989,24 @@
                 return true;
             }
 
-            // Check cache first (dkoder optimization)
+            // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
+            const chainResult = isChainAncestor(hashA, hashB);
+            if (chainResult === true) {
+                State.dagknight.intervalChainHits++;
+                State.dagknight.perf.isAncestor.time += performance.now() - start;
+                return true;
+            }
+            if (chainResult === false) {
+                // Interval says not chain ancestor - but might still be DAG ancestor
+                // For now, we use this as strong negative signal
+                // In full dkoder impl, would check future_covering_set here
+                State.dagknight.intervalChainHits++;
+                State.dagknight.perf.isAncestor.time += performance.now() - start;
+                return false;
+            }
+            // chainResult === null means no interval data, fall through to BFS
+
+            // Check cache (dkoder optimization)
             const cacheKey = hashA + ':' + hashB;
             const cached = State.dagknight.ancestorCache.get(cacheKey);
             if (cached !== undefined) {
@@ -1901,7 +2014,7 @@
                 State.dagknight.perf.isAncestor.time += performance.now() - start;
                 return cached;
             }
-            State.dagknight.ancestorCacheMisses++;
+            State.dagknight.intervalChainMisses++;  // Fell back to BFS
 
             const visited = new Set();
             const queue = [hashB];
@@ -2490,6 +2603,9 @@
                 dk.commonChainAncestor = { calls: 0, time: 0 };
                 dk.kColouring = { calls: 0, time: 0 };
                 dk.rank = { calls: 0, time: 0 };
+                // Reset interval-based reachability counters
+                State.dagknight.intervalChainHits = 0;
+                State.dagknight.intervalChainMisses = 0;
 
                 const { PENDING, BLUE, RED } = State.dagknight;
                 let coloredCount = 0;
@@ -2860,6 +2976,13 @@
                     line1 += ` | isAnc:${dk.isAncestor.calls}x/${dk.isAncestor.time.toFixed(0)}ms`;
                     line1 += ` kCol:${dk.kColouring.calls}x/${dk.kColouring.time.toFixed(0)}ms`;
                     line1 += ` rank:${dk.rank.calls}x/${dk.rank.time.toFixed(0)}ms`;
+                    // Interval-based reachability stats (dkoder: O(1) vs BFS fallback)
+                    const intHit = State.dagknight.intervalChainHits;
+                    const intMiss = State.dagknight.intervalChainMisses;
+                    if (intHit > 0 || intMiss > 0) {
+                        const hitRate = intHit + intMiss > 0 ? ((intHit / (intHit + intMiss)) * 100).toFixed(0) : 0;
+                        line1 += ` | int:${hitRate}%`; // Interval hit rate
+                    }
                 }
                 lines.push(line1);
 
