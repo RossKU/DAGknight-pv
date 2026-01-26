@@ -389,12 +389,10 @@
         </div>
 
         <div id="dummy-controls">
-            <span class="label">BPS Sim:</span>
+            <span class="label">BPS Simulator</span>
             <button id="btn-dummy-toggle">OFF</button>
-            <span class="label">×</span>
-            <button id="btn-dummy-2x" class="multiplier selected">2</button>
-            <button id="btn-dummy-3x" class="multiplier">3</button>
-            <button id="btn-dummy-10x" class="multiplier">10</button>
+            <button id="btn-dummy-30bps" class="multiplier selected">30BPS</button>
+            <button id="btn-dummy-100bps" class="multiplier">100BPS</button>
         </div>
 
         <div id="controls">
@@ -426,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v104-responsive-panels',
+            VERSION: 'v105-bps-simulator-labels',
 
             // Display
             MAX_BLOCKS: 500,
@@ -464,7 +462,7 @@
             // High BPS Simulation (Dummy Blocks)
             DUMMY: {
                 ENABLED: false,        // Toggle dummy block generation
-                MULTIPLIER: 1,         // +1=2x, +2=3x, +9=10x BPS
+                MULTIPLIER: 2,         // +2=30BPS, +9=100BPS (base 10BPS)
                 MAX_PARENT_SELECT: 2,  // Dummy removed from tips after this many selections
                 MAX_DUMMY_PARENTS: 2,  // Max dummy tips to add as parents per block
             },
@@ -641,9 +639,8 @@
             debugInfo: document.getElementById('debug-info'),
             // Dummy controls
             btnDummyToggle: document.getElementById('btn-dummy-toggle'),
-            btnDummy2x: document.getElementById('btn-dummy-2x'),
-            btnDummy3x: document.getElementById('btn-dummy-3x'),
-            btnDummy10x: document.getElementById('btn-dummy-10x'),
+            btnDummy30bps: document.getElementById('btn-dummy-30bps'),
+            btnDummy100bps: document.getElementById('btn-dummy-100bps'),
         };
 
         // ------------------------------------------------------------
@@ -3106,9 +3103,8 @@
 
                 // Update multiplier buttons
                 const mult = CONFIG.DUMMY.MULTIPLIER;
-                DOM.btnDummy2x.classList.toggle('selected', mult === 1);
-                DOM.btnDummy3x.classList.toggle('selected', mult === 2);
-                DOM.btnDummy10x.classList.toggle('selected', mult === 9);
+                DOM.btnDummy30bps.classList.toggle('selected', mult === 2);
+                DOM.btnDummy100bps.classList.toggle('selected', mult === 9);
             }
 
             DOM.btnDummyToggle.addEventListener('click', () => {
@@ -3116,18 +3112,13 @@
                 updateDummyUI();
             });
 
-            DOM.btnDummy2x.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 1;  // +1 = 2x BPS
+            DOM.btnDummy30bps.addEventListener('click', () => {
+                CONFIG.DUMMY.MULTIPLIER = 2;  // 10BPS × 3 = 30BPS
                 updateDummyUI();
             });
 
-            DOM.btnDummy3x.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 2;  // +2 = 3x BPS
-                updateDummyUI();
-            });
-
-            DOM.btnDummy10x.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 9;  // +9 = 10x BPS
+            DOM.btnDummy100bps.addEventListener('click', () => {
+                CONFIG.DUMMY.MULTIPLIER = 9;  // 10BPS × 10 = 100BPS
                 updateDummyUI();
             });
 
