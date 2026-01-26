@@ -270,6 +270,49 @@
             color: #FFD700;
         }
 
+        /* View mode controls */
+        #view-mode-controls {
+            position: absolute;
+            bottom: 104px;
+            right: 16px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: rgba(10, 14, 23, 0.85);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 8px;
+            padding: 8px 12px;
+            backdrop-filter: blur(8px);
+        }
+
+        #view-mode-controls .label {
+            font-size: 12px;
+            color: #888;
+            margin-right: 4px;
+        }
+
+        #view-mode-controls button {
+            background: rgba(74, 144, 217, 0.2);
+            border: 1px solid rgba(74, 144, 217, 0.5);
+            color: #4A90D9;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        #view-mode-controls button:hover {
+            background: rgba(74, 144, 217, 0.4);
+        }
+
+        #view-mode-controls button.selected {
+            background: rgba(0, 255, 136, 0.3);
+            border-color: #00FF88;
+            color: #00FF88;
+        }
+
         /* Loading overlay */
         #loading {
             position: absolute;
@@ -395,6 +438,12 @@
             <button id="btn-dummy-100bps" class="multiplier">100BPS</button>
         </div>
 
+        <div id="view-mode-controls">
+            <span class="label">View</span>
+            <button id="btn-view-linear" class="selected">Linear</button>
+            <button id="btn-view-dag">DAG</button>
+        </div>
+
         <div id="controls">
             <button id="btn-disconnect">Disconnect</button>
             <button id="btn-pause">Pause</button>
@@ -424,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v111-network-state-white',
+            VERSION: 'v112-view-mode-switch',
 
             // Display
             MAX_BLOCKS: 500,
@@ -433,6 +482,8 @@
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
             SPAWN_X: 400,  // Screen-relative: blocks spawn at right side (relative to center 0)
+            DAA_PITCH: 50,  // X spacing per DAA score in DAG mode
+            VIEW_MODE: 'linear',  // 'linear' | 'dag'
             CLEANUP_THRESHOLD: -1600,  // Remove blocks with X below this (≈ 2x screen width left of SPAWN_X)
 
             // Colors
@@ -641,6 +692,9 @@
             btnDummyToggle: document.getElementById('btn-dummy-toggle'),
             btnDummy30bps: document.getElementById('btn-dummy-30bps'),
             btnDummy100bps: document.getElementById('btn-dummy-100bps'),
+            // View mode controls
+            btnViewLinear: document.getElementById('btn-view-linear'),
+            btnViewDag: document.getElementById('btn-view-dag'),
         };
 
         // ------------------------------------------------------------
@@ -745,8 +799,8 @@
                 // Y animation (all blocks)
                 y[i] += (targetY[i] - y[i]) * 0.15;
 
-                // X animation (only for linearized blocks)
-                if (linearIndex[i] >= 0) {
+                // X animation: DAG mode = all blocks, Linear mode = only linearized
+                if (CONFIG.VIEW_MODE === 'dag' || linearIndex[i] >= 0) {
                     x[i] += (targetX[i] - x[i]) * 0.1;
                 }
             }
@@ -2688,38 +2742,46 @@
                 // --- End DAGknight Coloring ---
 
                 // Assign linearIndex and targetX to linearized blocks
-                // Screen-relative: newest at SPAWN_X, oldest spreads left
-                const maxLinearIdx = linearOrder.length - 1;
-                const SPAWN_X = CONFIG.SPAWN_X;
+                // Position blocks based on view mode
+                if (CONFIG.VIEW_MODE === 'dag') {
+                    // DAG mode: X based on DAA score, Y stays random
+                    // Viewport follows newest blocks
+                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                        const maxX = (State.maxDaaScore - State.minDaaScore) * CONFIG.DAA_PITCH;
+                        State.viewport.targetX = maxX - State.viewport.width * 0.7;
+                    }
+                    // targetX/Y already set in addBlock, no changes needed
+                } else {
+                    // Linear mode: linearized blocks align to chain
+                    const maxLinearIdx = linearOrder.length - 1;
+                    const SPAWN_X = CONFIG.SPAWN_X;
 
-                // Build hash→index map for O(1) lookup (fixes O(n²) indexOf issue)
-                const linearOrderMap = new Map();
-                for (let idx = 0; idx < linearOrder.length; idx++) {
-                    linearOrderMap.set(linearOrder[idx], idx);
-                }
+                    // Build hash→index map for O(1) lookup
+                    const linearOrderMap = new Map();
+                    for (let idx = 0; idx < linearOrder.length; idx++) {
+                        linearOrderMap.set(linearOrder[idx], idx);
+                    }
 
-                for (let i = 0; i < State.blockCount; i++) {
-                    const hash = State.blockData.hashes[i];
-                    const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
+                    for (let i = 0; i < State.blockCount; i++) {
+                        const hash = State.blockData.hashes[i];
+                        const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
 
-                    if (linearIdx !== -1) {
-                        // Block is linearized - right aligned from SPAWN_X
-                        // linearIdx=max (newest) → X=SPAWN_X
-                        // linearIdx=0 (oldest) → X=SPAWN_X - maxLinearIdx*PITCH (goes left)
-                        State.blockData.linearIndex[i] = linearIdx;
-                        State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
-                        State.blockData.targetY[i] = 0;
-                        State.blockData.isBlue[i] = 1;
-                    } else {
-                        // Block not yet linearized - place just right of SPAWN_X
-                        State.blockData.linearIndex[i] = -1;
-                        State.blockData.targetX[i] = SPAWN_X + 20;
-                        // targetY stays at random position
+                        if (linearIdx !== -1) {
+                            // Block is linearized - right aligned from SPAWN_X
+                            State.blockData.linearIndex[i] = linearIdx;
+                            State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                            State.blockData.targetY[i] = 0;
+                            State.blockData.isBlue[i] = 1;
+                        } else {
+                            // Block not yet linearized - place just right of SPAWN_X
+                            State.blockData.linearIndex[i] = -1;
+                            State.blockData.targetX[i] = SPAWN_X + 20;
+                            // targetY stays at random position
+                        }
                     }
                 }
 
-                // Viewport stays fixed at center (0, 0)
-                // No scrolling needed with screen-relative coordinates
+                // Viewport control (Linear mode stays fixed)
 
                 // Cleanup: Remove blocks that have scrolled too far left
                 // Dynamic threshold based on zoom and viewport position
@@ -2784,19 +2846,23 @@
                 State.maxDaaScore = daaScore;
             }
 
-            // X = SPAWN_X (screen-relative: right side of center)
-            // Small random offset to spread tips visually
-            const tipOffset = 10 + Math.random() * 30;
-            State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
-
-            // Y = random (spread vertically, scaled for high BPS: 30BPS=1.5x, 100BPS=2x)
+            // Position based on view mode
             const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
             const randomY = (Math.random() - 0.5) * 300 * yScale;
+
+            if (CONFIG.VIEW_MODE === 'dag') {
+                // DAG mode: X based on DAA score
+                State.blockData.x[index] = (daaScore - State.minDaaScore) * CONFIG.DAA_PITCH;
+                State.blockData.targetX[index] = State.blockData.x[index];
+            } else {
+                // Linear mode: X at spawn area (will be updated by linearization)
+                const tipOffset = 10 + Math.random() * 30;
+                State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
+                State.blockData.targetX[index] = State.blockData.x[index];
+            }
+
             State.blockData.y[index] = randomY;
             State.blockData.targetY[index] = randomY;  // Same as y initially
-
-            // X target = same as X initially (will be updated by linearization)
-            State.blockData.targetX[index] = State.blockData.x[index];
             State.blockData.linearIndex[index] = -1;  // Not linearized yet
 
             // Store blueScore, blueWork, and bits for DAGknight calculation
@@ -3145,6 +3211,47 @@
                 CONFIG.DUMMY.MULTIPLIER = 9;  // 10BPS × 10 = 100BPS
                 updateDummyUI();
             });
+
+            // View mode controls
+            function updateViewModeUI() {
+                DOM.btnViewLinear.classList.toggle('selected', CONFIG.VIEW_MODE === 'linear');
+                DOM.btnViewDag.classList.toggle('selected', CONFIG.VIEW_MODE === 'dag');
+            }
+
+            function switchViewMode(mode) {
+                CONFIG.VIEW_MODE = mode;
+                updateViewModeUI();
+
+                // Recalculate all block positions for smooth transition
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    if (!hash) continue;
+
+                    const daaScore = State.blockData.daaScore[i];
+
+                    if (mode === 'dag') {
+                        // DAG mode: X based on DAA score, Y random
+                        State.blockData.targetX[i] = (daaScore - State.minDaaScore) * CONFIG.DAA_PITCH;
+                        // Keep current targetY (random position)
+                    } else {
+                        // Linear mode: will be updated by next DAGknight calculation
+                        // For now, move to spawn area
+                        State.blockData.targetX[i] = CONFIG.SPAWN_X + 20;
+                        // Y will converge to 0 for linearized blocks
+                    }
+                }
+
+                // Update viewport for DAG mode
+                if (mode === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxX = (State.maxDaaScore - State.minDaaScore) * CONFIG.DAA_PITCH;
+                    State.viewport.targetX = maxX - State.viewport.width * 0.7;
+                } else if (mode === 'linear') {
+                    State.viewport.targetX = 0;
+                }
+            }
+
+            DOM.btnViewLinear.addEventListener('click', () => switchViewMode('linear'));
+            DOM.btnViewDag.addEventListener('click', () => switchViewMode('dag'));
 
             // Pan with mouse drag
             let isDragging = false;
