@@ -424,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v109-force-blue-in-simulation',
+            VERSION: 'v110-scale-spawn-y-range',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1023,8 +1023,9 @@
                 const tipOffset = 10 + Math.random() * 30;
                 State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
 
-                // Y = spread vertically (different from original)
-                const randomY = (Math.random() - 0.5) * 300;
+                // Y = spread vertically (scaled for high BPS: 30BPS=1.5x, 100BPS=2x)
+                const yScale = CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0;
+                const randomY = (Math.random() - 0.5) * 300 * yScale;
                 State.blockData.y[index] = randomY;
                 State.blockData.targetY[index] = randomY;
 
@@ -2788,8 +2789,9 @@
             const tipOffset = 10 + Math.random() * 30;
             State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
 
-            // Y = random (spread vertically around center)
-            const randomY = (Math.random() - 0.5) * 300;
+            // Y = random (spread vertically, scaled for high BPS: 30BPS=1.5x, 100BPS=2x)
+            const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
+            const randomY = (Math.random() - 0.5) * 300 * yScale;
             State.blockData.y[index] = randomY;
             State.blockData.targetY[index] = randomY;  // Same as y initially
 
