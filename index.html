@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v113-dag-column-layout',
+            VERSION: 'v114-dag-right-fixed-camera',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2748,11 +2748,11 @@
                 // Assign linearIndex and targetX to linearized blocks
                 // Position blocks based on view mode
                 if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: Viewport follows newest column
+                    // DAG mode: Keep newest block at right side (same as Linear mode)
                     if (State.maxDaaScore !== null && State.minDaaScore !== null) {
                         const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                         const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        State.viewport.targetX = maxX - State.viewport.width * 0.7;
+                        State.viewport.targetX = maxX - CONFIG.SPAWN_X;
                     }
                     // targetX/Y already set in addBlock, no changes needed
                 } else {
@@ -3279,11 +3279,11 @@
                         State.dagColumnCount.set(column, indices.length);
                     }
 
-                    // Update viewport for DAG mode
+                    // Update viewport for DAG mode (newest at right side)
                     if (State.maxDaaScore !== null && State.minDaaScore !== null) {
                         const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                         const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        State.viewport.targetX = maxX - State.viewport.width * 0.7;
+                        State.viewport.targetX = maxX - CONFIG.SPAWN_X;
                     }
                 } else {
                     // Linear mode: will be updated by next DAGknight calculation
