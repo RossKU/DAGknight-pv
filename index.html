@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v121-y-axis-animate',
+            VERSION: 'v122-cached-sort',
 
             // Display
             MAX_BLOCKS: 500,
@@ -593,6 +593,7 @@
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
+            sortedIndices: [],  // Cached: block indices sorted by X (updated in DAGknight calc, not every frame)
             lastDagknightCalc: 0,
 
             // Debug info
@@ -830,12 +831,8 @@
             let visibleCount = 0;
             let edgeCount = 0;
 
-            // Build sorted index array (by X descending = newest first)
-            const sortedIndices = [];
-            for (let i = 0; i < State.blockCount; i++) {
-                sortedIndices.push(i);
-            }
-            sortedIndices.sort((a, b) => x[b] - x[a]);
+            // Use cached sorted indices (updated in DAGknight calc, not every frame)
+            const sortedIndices = State.sortedIndices;
 
             // First pass: draw edges (newest blocks first, up to MAX_EDGES)
             for (const i of sortedIndices) {
@@ -2778,6 +2775,17 @@
                 if (removedCount > 0) {
                     State.debug.removed = removedCount;
                 }
+
+                // Update cached sorted indices (by X descending = newest first)
+                // This avoids O(n log n) sort every frame in renderDAG
+                const { x } = State.blockData;
+                State.sortedIndices = [];
+                for (let i = 0; i < State.blockCount; i++) {
+                    if (State.blockData.hashes[i]) {
+                        State.sortedIndices.push(i);
+                    }
+                }
+                State.sortedIndices.sort((a, b) => x[b] - x[a]);
             } catch (error) {
                 State.debug = { error: error.message };
                 console.error('DAGknight calculation error:', error);
