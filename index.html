@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v123-2x-cleanup-margin',
+            VERSION: 'v124-reduce-dom-updates',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2919,9 +2919,7 @@
             }
 
             // Viewport stays at center (0, 0) - no need to update
-
-            // Update UI
-            DOM.blockCount.textContent = State.blockCount.toLocaleString();
+            // Note: blockCount DOM update moved to updateStatsDisplay (1/sec instead of per-block)
         }
 
         // ------------------------------------------------------------
@@ -3008,6 +3006,9 @@
         }
 
         function updateStatsDisplay() {
+            // Block count (moved from addBlock - 1/sec instead of per-block)
+            DOM.blockCount.textContent = State.blockCount;
+
             // FPS
             DOM.fpsDisplay.textContent = `${State.stats.fps} FPS`;
             DOM.fpsDisplay.className = 'fps';
