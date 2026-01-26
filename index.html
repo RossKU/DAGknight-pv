@@ -424,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v107-remove-unused-dummy-color',
+            VERSION: 'v108-scale-k-for-simulation',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1756,10 +1756,21 @@
                 State.dagknight.lastBlueCount = data.blueCount;
 
                 if (data.blueWork >= halfZoneWork) {
-                    State.dagknight.lastK = k;
+                    // Simulation mode: scale k by BPS multiplier
+                    // 30BPS (3x) → k * 3, 100BPS (10x) → k * 10
+                    const effectiveK = CONFIG.DUMMY.ENABLED
+                        ? k * (CONFIG.DUMMY.MULTIPLIER + 1)
+                        : k;
+
+                    // Recalculate with scaled k if in simulation mode
+                    const finalData = CONFIG.DUMMY.ENABLED && effectiveK > k
+                        ? fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, effectiveK)
+                        : data;
+
+                    State.dagknight.lastK = effectiveK;
                     State.dagknight.lastKFound = true;
                     State.dagknight.lastBluesAtK0 = bluesAtK0;
-                    return { k, subgroupVirtual: data };
+                    return { k: effectiveK, subgroupVirtual: finalData };
                 }
             }
 
