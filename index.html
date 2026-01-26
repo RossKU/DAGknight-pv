@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v115-smooth-dag-to-linear',
+            VERSION: 'v116-single-selected-chain',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1112,12 +1112,7 @@
                 State.blockData.parentHashes[index] = [...originalParents];
 
                 // Calculate Selected Parent (highest BlueWork) and add green edge
-                const selectedParent = findSelectedParent(originalParents);
-                if (selectedParent) {
-                    // Add dummy -> selectedParent edge for chain visualization
-                    if (!State.selectedChainEdges) State.selectedChainEdges = [];
-                    State.selectedChainEdges.push([dummyHash, selectedParent]);
-                }
+                // Note: Dummies are not part of Selected Chain, so no edges added
 
                 // Update ring buffer
                 State.ringHead = (State.ringHead + 1) % CONFIG.MAX_BLOCKS;
@@ -2614,40 +2609,14 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Accumulate ALL edges (keep until blocks are deleted)
-                // Classification (green/blue) happens at render time using targetX
-                const survivingOldEdges = [];
-                if (State.selectedChainEdges) {
-                    for (const [fromHash, toHash] of State.selectedChainEdges) {
-                        const idx1 = State.blockHashToIndex.get(fromHash);
-                        const idx2 = State.blockHashToIndex.get(toHash);
-                        if (idx1 !== undefined && idx2 !== undefined) {
-                            survivingOldEdges.push([fromHash, toHash]);
-                        }
-                    }
+                // Build Selected Chain edges from current chainList only (no accumulation)
+                // This ensures only the current single chain is highlighted
+                const currentChainEdges = [];
+                for (let i = 0; i < chainList.length - 1; i++) {
+                    currentChainEdges.push([chainList[i], chainList[i + 1]]);
                 }
 
-                // Merge: old surviving edges + new edges (deduplicated)
-                const edgeSet = new Set();
-                const mergedEdges = [];
-
-                for (const edge of survivingOldEdges) {
-                    const key = `${edge[0]}->${edge[1]}`;
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        mergedEdges.push(edge);
-                    }
-                }
-
-                for (const edge of edges) {
-                    const key = `${edge[0]}->${edge[1]}`;
-                    if (!edgeSet.has(key)) {
-                        edgeSet.add(key);
-                        mergedEdges.push(edge);
-                    }
-                }
-
-                State.selectedChainEdges = mergedEdges;
+                State.selectedChainEdges = currentChainEdges;
 
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
