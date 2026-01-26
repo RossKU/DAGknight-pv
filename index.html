@@ -154,7 +154,6 @@
         .color-blue { background: #4A90D9; }
         .color-red { background: #E74C3C; }
         .color-vspc { background: #00FF88; box-shadow: 0 0 8px #00FF88; }
-        .color-cluster { background: #9B59B6; }
         .color-lcca { background: #FFD700; box-shadow: 0 0 8px #FFD700; }
 
         /* Controls */
@@ -318,7 +317,6 @@
             <div class="item"><div class="color color-blue"></div> Blue Block</div>
             <div class="item"><div class="color color-red"></div> Red Block</div>
             <div class="item"><div class="color color-vspc"></div> Selected Chain</div>
-            <div class="item"><div class="color color-cluster"></div> Honest Cluster</div>
             <div class="item"><div class="color color-lcca"></div> LCCA</div>
         </div>
 
@@ -360,7 +358,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v100-dynamic-cleanup-threshold',
+            VERSION: 'v101-remove-honest-cluster',
 
             // Display
             MAX_BLOCKS: 500,
@@ -383,7 +381,6 @@
                 WHITE: 0xFFFFFF,  // White for outlines
                 EDGE: 0x334455,
                 EDGE_SELECTED: 0xFFFFFF,
-                HONEST_CLUSTER: 0x9B59B6,
             },
 
             // Performance
