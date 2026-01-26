@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v114-dag-right-fixed-camera',
+            VERSION: 'v115-smooth-dag-to-linear',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3286,12 +3286,33 @@
                         State.viewport.targetX = maxX - CONFIG.SPAWN_X;
                     }
                 } else {
-                    // Linear mode: will be updated by next DAGknight calculation
+                    // Linear mode: calculate correct positions using linearOrder
+                    const linearOrder = State.linearOrder || [];
+                    const maxLinearIdx = linearOrder.length - 1;
+                    const SPAWN_X = CONFIG.SPAWN_X;
+
+                    // Build hash→linearIndex map
+                    const linearOrderMap = new Map();
+                    for (let idx = 0; idx < linearOrder.length; idx++) {
+                        linearOrderMap.set(linearOrder[idx], idx);
+                    }
+
                     for (let i = 0; i < State.blockCount; i++) {
                         const hash = State.blockData.hashes[i];
                         if (!hash) continue;
-                        State.blockData.targetX[i] = CONFIG.SPAWN_X + 20;
-                        // Y will converge to 0 for linearized blocks
+
+                        const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
+
+                        if (linearIdx !== -1) {
+                            // Linearized block - proper chain position
+                            State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                            State.blockData.targetY[i] = 0;
+                            State.blockData.linearIndex[i] = linearIdx;
+                        } else {
+                            // Not linearized - spawn area
+                            State.blockData.targetX[i] = SPAWN_X + 20;
+                            // Keep current Y (will be updated by DAGknight calculation)
+                        }
                     }
                     State.viewport.targetX = 0;
                 }
