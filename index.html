@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v118-linear-3x-margin',
+            VERSION: 'v119-instant-dag-to-linear',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3271,16 +3271,23 @@
 
                         if (linearIdx !== -1) {
                             // Linearized block - proper chain position
-                            State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                            const newX = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                            State.blockData.targetX[i] = newX;
+                            State.blockData.x[i] = newX;  // Instant position
                             State.blockData.targetY[i] = 0;
+                            State.blockData.y[i] = 0;     // Instant position
                             State.blockData.linearIndex[i] = linearIdx;
                         } else {
                             // Not linearized - spawn area
-                            State.blockData.targetX[i] = SPAWN_X + 20;
-                            // Keep current Y (will be updated by DAGknight calculation)
+                            const newX = SPAWN_X + 20;
+                            State.blockData.targetX[i] = newX;
+                            State.blockData.x[i] = newX;  // Instant position
+                            State.blockData.targetY[i] = 0;
+                            State.blockData.y[i] = 0;     // Instant position
                         }
                     }
                     State.viewport.targetX = 0;
+                    State.viewport.x = 0;  // Instant viewport
                 }
             }
 
