@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v122-cached-sort',
+            VERSION: 'v123-2x-cleanup-margin',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2750,12 +2750,11 @@
 
                 // Cleanup: Remove blocks that have scrolled too far left
                 // Dynamic threshold based on zoom and viewport position
-                // Linear mode: 3x margin (more history visible), DAG mode: 2x margin
+                // Both modes: 2x total (visible + 1x margin)
                 const { zoom, width, x: vpX } = State.viewport;
                 const halfWidth = width / 2;
                 const visibleLeft = vpX - halfWidth / zoom;
-                const marginMultiplier = CONFIG.VIEW_MODE === 'linear' ? 2 : 1;
-                const cleanupThreshold = visibleLeft - width / zoom * marginMultiplier;
+                const cleanupThreshold = visibleLeft - width / zoom;  // 1x margin
 
                 let removedCount = 0;
                 for (let i = 0; i < State.blockCount; i++) {
