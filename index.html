@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v116-single-selected-chain',
+            VERSION: 'v117-all-tips-selected-chain',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2609,14 +2609,9 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Build Selected Chain edges from current chainList only (no accumulation)
-                // This ensures only the current single chain is highlighted
-                const currentChainEdges = [];
-                for (let i = 0; i < chainList.length - 1; i++) {
-                    currentChainEdges.push([chainList[i], chainList[i + 1]]);
-                }
-
-                State.selectedChainEdges = currentChainEdges;
+                // Use edges from buildSelectedChains (all tips → LCCA)
+                // This shows Selected Parent path from each tip to convergence point
+                State.selectedChainEdges = edges;
 
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
