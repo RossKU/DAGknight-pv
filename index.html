@@ -424,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v106-dummy-in-linear-order',
+            VERSION: 'v107-remove-unused-dummy-color',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1045,10 +1045,8 @@
                 State.blockData.blueWork[index] = dummyBlueWork;
                 State.blockData.bits[index] = originalBits;
 
-                // Color: Blue (dummies are treated as blue blocks)
-                State.blockData.color[index] = CONFIG.COLORS.BLUE_BLOCK;
+                // Pending state (will be colored by DAGknight if it gets children)
                 State.blockData.confirmationState[index] = 0;
-                State.blockData.isBlue[index] = 1;
                 State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
                 // Parents: same as original
