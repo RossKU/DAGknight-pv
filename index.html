@@ -360,7 +360,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v98-fix-touch-drag',
+            VERSION: 'v99-viewport-pan-persist',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3077,6 +3077,7 @@
                 const dy = (e.clientY - lastMouse.y) / State.viewport.zoom;
                 State.viewport.x -= dx;
                 State.viewport.y -= dy;
+                State.viewport.targetX = State.viewport.x;
                 lastMouse = { x: e.clientX, y: e.clientY };
             });
 
@@ -3107,6 +3108,7 @@
                     const dy = (e.touches[0].clientY - lastMouse.y) / State.viewport.zoom;
                     State.viewport.x -= dx;
                     State.viewport.y -= dy;
+                    State.viewport.targetX = State.viewport.x;
                     lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                 } else if (e.touches.length === 2 && lastPinchDist > 0) {
                     // Pinch zoom
