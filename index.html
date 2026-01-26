@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v119-instant-dag-to-linear',
+            VERSION: 'v121-y-axis-animate',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3273,17 +3273,17 @@
                             // Linearized block - proper chain position
                             const newX = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
                             State.blockData.targetX[i] = newX;
-                            State.blockData.x[i] = newX;  // Instant position
+                            State.blockData.x[i] = newX;  // Instant X (prevent fly-off)
                             State.blockData.targetY[i] = 0;
-                            State.blockData.y[i] = 0;     // Instant position
+                            // Y animates via lerp (smooth convergence to chain)
                             State.blockData.linearIndex[i] = linearIdx;
                         } else {
                             // Not linearized - spawn area
                             const newX = SPAWN_X + 20;
                             State.blockData.targetX[i] = newX;
-                            State.blockData.x[i] = newX;  // Instant position
+                            State.blockData.x[i] = newX;  // Instant X (prevent fly-off)
                             State.blockData.targetY[i] = 0;
-                            State.blockData.y[i] = 0;     // Instant position
+                            // Y animates via lerp
                         }
                     }
                     State.viewport.targetX = 0;
