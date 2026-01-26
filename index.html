@@ -360,7 +360,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v99-viewport-pan-persist',
+            VERSION: 'v100-dynamic-cleanup-threshold',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2637,13 +2637,19 @@
                 // No scrolling needed with screen-relative coordinates
 
                 // Cleanup: Remove blocks that have scrolled too far left
+                // Dynamic threshold based on zoom and viewport position
+                const { zoom, width, x: vpX } = State.viewport;
+                const halfWidth = width / 2;
+                const visibleLeft = vpX - halfWidth / zoom;
+                const cleanupThreshold = visibleLeft - width / zoom;  // 1 screen width margin
+
                 let removedCount = 0;
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     if (!hash) continue;
 
-                    // Check if block is too far left (past cleanup threshold)
-                    if (State.blockData.x[i] < CONFIG.CLEANUP_THRESHOLD) {
+                    // Check if block is too far left (past dynamic cleanup threshold)
+                    if (State.blockData.x[i] < cleanupThreshold) {
                         // Remove from hash map
                         State.blockHashToIndex.delete(hash);
                         // Clear the slot
