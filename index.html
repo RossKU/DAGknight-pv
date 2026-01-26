@@ -424,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v107-remove-unused-dummy-color',
+            VERSION: 'v109-force-blue-in-simulation',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1412,6 +1412,12 @@
 
             // Process each candidate in topological order
             for (const candidateHash of mergeset) {
+                // Simulation mode: force all blocks to blue
+                if (CONFIG.DUMMY.ENABLED) {
+                    mergesetBlues.add(candidateHash);
+                    continue;
+                }
+
                 // Early termination (dkoder): if blues already at k, remaining are Red
                 if (mergesetBlues.size >= k && k > 0) {
                     // Can't add more blues, mark rest as red
@@ -1641,6 +1647,13 @@
                     const mergesetReds = [];
 
                     for (const candidate of mergeset) {
+                        // Simulation mode: force all blocks to blue
+                        if (CONFIG.DUMMY.ENABLED) {
+                            mergesetBlues.push(candidate);
+                            blueStatusStore.set(candidate, 'blue');
+                            continue;
+                        }
+
                         if (mergesetBlues.length >= k && k > 0) {
                             mergesetReds.push(candidate);
                             continue;
