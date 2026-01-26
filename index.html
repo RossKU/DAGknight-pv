@@ -424,7 +424,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v105-bps-simulator-labels',
+            VERSION: 'v106-dummy-in-linear-order',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2455,7 +2455,18 @@
                 // Compute mergeset for this chain block
                 const mergeset = computeMergeset(chainBlock, prevChainBlock);
 
-                // Sort mergeset by blue_work ascending
+                // Add dummy blocks as part of mergeset (high BPS simulation)
+                // Dummies are treated as parallel blocks absorbed by this chain block
+                if (CONFIG.DUMMY.ENABLED) {
+                    for (let j = 0; j < CONFIG.DUMMY.MULTIPLIER; j++) {
+                        const dummyHash = generateDummyHash(chainBlock, j);
+                        if (State.blockHashToIndex.has(dummyHash) && !addedToOrder.has(dummyHash)) {
+                            mergeset.push(dummyHash);
+                        }
+                    }
+                }
+
+                // Sort mergeset by blue_work ascending (dummies have lower blueWork)
                 const sortedMergeset = sortByBlueWork(mergeset);
 
                 // Add mergeset blocks (skip if already added)
