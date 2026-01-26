@@ -314,6 +314,29 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+
+        /* Hide panels when viewport is too small */
+        @media (max-height: 500px) {
+            #status, #stats {
+                display: none;
+            }
+        }
+
+        @media (max-width: 600px) {
+            #status, #stats {
+                display: none;
+            }
+            #header h1 {
+                font-size: 16px;
+            }
+            #header .subtitle {
+                font-size: 10px;
+            }
+            #header .logo {
+                width: 30px;
+                height: 30px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -403,7 +426,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v103-ui-adjustments',
+            VERSION: 'v104-responsive-panels',
 
             // Display
             MAX_BLOCKS: 500,
