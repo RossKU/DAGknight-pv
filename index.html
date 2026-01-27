@@ -492,7 +492,7 @@
             padding: 24px 32px;
             width: 600px;
             max-width: calc(100% - 32px);
-            height: 220px;
+            height: 260px;
             backdrop-filter: blur(12px);
             display: none;
             opacity: 0;
@@ -585,7 +585,6 @@
             background: rgba(74, 144, 217, 0.3);
             border: 1px solid #4A90D9;
             color: #4A90D9;
-            flex: 1;
         }
         #tutorial-modal .btn-primary:hover {
             background: rgba(74, 144, 217, 0.5);
@@ -3794,7 +3793,9 @@
             },
 
             back() {
-                if (this.currentStep > 0) {
+                if (this.currentStep === 0) {
+                    this.close();
+                } else {
                     this.currentStep--;
                     this.render();
                 }
@@ -3817,7 +3818,11 @@
                 `;
 
                 // Update buttons
-                DOM.tutorialBack.style.visibility = this.currentStep === 0 ? 'hidden' : 'visible';
+                if (this.currentStep === 0) {
+                    DOM.tutorialBack.textContent = 'Close';
+                } else {
+                    DOM.tutorialBack.textContent = '← Back';
+                }
 
                 if (step.final) {
                     DOM.tutorialNext.textContent = 'Close';
