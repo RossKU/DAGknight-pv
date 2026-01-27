@@ -432,6 +432,182 @@
                 height: 30px;
             }
         }
+
+        /* Tutorial */
+        #tutorial-btn {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(74, 144, 217, 0.2);
+            border: 1px solid rgba(74, 144, 217, 0.5);
+            color: #4A90D9;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #tutorial-btn:hover {
+            background: rgba(74, 144, 217, 0.4);
+            border-color: #4A90D9;
+        }
+        #tutorial-btn .icon {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        /* Tutorial Overlay */
+        #tutorial-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 500;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #tutorial-overlay.visible {
+            display: block;
+            opacity: 1;
+        }
+
+        /* Tutorial Modal */
+        #tutorial-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 501;
+            background: rgba(10, 14, 23, 0.95);
+            border: 1px solid rgba(74, 144, 217, 0.5);
+            border-radius: 12px;
+            padding: 24px 32px;
+            max-width: 420px;
+            width: calc(100% - 32px);
+            backdrop-filter: blur(12px);
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #tutorial-modal.visible {
+            display: block;
+            opacity: 1;
+        }
+        #tutorial-modal .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        #tutorial-modal .step-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(74, 144, 217, 0.3);
+            transition: all 0.3s;
+        }
+        #tutorial-modal .step-dot.active {
+            background: #4A90D9;
+            box-shadow: 0 0 8px #4A90D9;
+        }
+        #tutorial-modal .step-dot.completed {
+            background: #00FF88;
+        }
+        #tutorial-modal .content {
+            text-align: center;
+            min-height: 120px;
+        }
+        #tutorial-modal .content h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+        #tutorial-modal .content p {
+            font-size: 14px;
+            color: #aaa;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        #tutorial-modal .content .highlight {
+            color: #4A90D9;
+            font-weight: 500;
+        }
+        #tutorial-modal .content .highlight-gold {
+            color: #FFD700;
+            font-weight: 500;
+        }
+        #tutorial-modal .content .highlight-green {
+            color: #00FF88;
+            font-weight: 500;
+        }
+        #tutorial-modal .content .big-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #00FF88;
+            display: block;
+            margin: 12px 0;
+        }
+        #tutorial-modal .buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 24px;
+            gap: 12px;
+        }
+        #tutorial-modal .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            border: none;
+        }
+        #tutorial-modal .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+        #tutorial-modal .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        #tutorial-modal .btn-primary {
+            background: rgba(74, 144, 217, 0.3);
+            border: 1px solid #4A90D9;
+            color: #4A90D9;
+            flex: 1;
+        }
+        #tutorial-modal .btn-primary:hover {
+            background: rgba(74, 144, 217, 0.5);
+        }
+        #tutorial-modal .btn-share {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00FF88;
+            color: #00FF88;
+        }
+        #tutorial-modal .btn-share:hover {
+            background: rgba(0, 255, 136, 0.3);
+        }
+        #tutorial-modal .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* Spotlight highlight for tutorial */
+        .tutorial-spotlight {
+            box-shadow: 0 0 0 4px rgba(74, 144, 217, 0.8), 0 0 20px rgba(74, 144, 217, 0.5);
+            border-radius: 8px;
+            position: relative;
+            z-index: 502;
+        }
     </style>
 </head>
 <body>
@@ -492,6 +668,33 @@
             <div class="item"><div class="color color-lcca"></div> LCCA</div>
         </div>
 
+        <!-- Tutorial Button -->
+        <button id="tutorial-btn">
+            <span class="icon">?</span>
+            <span>What's this?</span>
+        </button>
+
+        <!-- Tutorial Overlay -->
+        <div id="tutorial-overlay"></div>
+
+        <!-- Tutorial Modal -->
+        <div id="tutorial-modal">
+            <div class="step-indicator">
+                <div class="step-dot" data-step="1"></div>
+                <div class="step-dot" data-step="2"></div>
+                <div class="step-dot" data-step="3"></div>
+                <div class="step-dot" data-step="4"></div>
+                <div class="step-dot" data-step="5"></div>
+            </div>
+            <div class="content" id="tutorial-content">
+                <!-- Content injected by JS -->
+            </div>
+            <div class="buttons">
+                <button class="btn btn-secondary" id="tutorial-back">← Back</button>
+                <button class="btn btn-primary" id="tutorial-next">Next →</button>
+            </div>
+        </div>
+
         <div id="dummy-controls">
             <span class="label">BPS Simulator</span>
             <button id="btn-dummy-toggle">OFF</button>
@@ -534,7 +737,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v145-daa-score-display',
+            VERSION: 'v146-tutorial',
 
             // Display
             MAX_BLOCKS: 500,
@@ -746,6 +949,13 @@
             infoBlueScore: document.getElementById('info-blue-score'),
             infoBlueWork: document.getElementById('info-blue-work'),
             infoHint: document.getElementById('info-hint'),
+            // Tutorial
+            tutorialBtn: document.getElementById('tutorial-btn'),
+            tutorialOverlay: document.getElementById('tutorial-overlay'),
+            tutorialModal: document.getElementById('tutorial-modal'),
+            tutorialContent: document.getElementById('tutorial-content'),
+            tutorialBack: document.getElementById('tutorial-back'),
+            tutorialNext: document.getElementById('tutorial-next'),
         };
 
         // ------------------------------------------------------------
@@ -3502,6 +3712,164 @@
                 updateBlockInfo();
             });
         }
+
+        // ------------------------------------------------------------
+        // Tutorial System
+        // ------------------------------------------------------------
+        const Tutorial = {
+            currentStep: 0,
+            isOpen: false,
+            wasPlaying: false,  // Track if we were playing before tutorial
+
+            steps: [
+                {
+                    title: 'A blockchain pushed to the limit.<br>Mathematically.',
+                    content: '<span class="big-number">10 blocks/sec</span><p>You\'re watching it live.</p>',
+                    highlight: null,
+                },
+                {
+                    title: 'Multiple blocks created simultaneously.',
+                    content: '<p>When the network is this fast, blocks are created in parallel.</p><p>What happens to them?</p>',
+                    highlight: null,
+                    action: () => {
+                        // Pause to show the DAG structure
+                        if (!State.isPaused) {
+                            DOM.btnPause.click();
+                        }
+                    }
+                },
+                {
+                    title: 'All blocks are included.<br>And ordered into a single chain.',
+                    content: '<p><span class="highlight-gold">🟨 Gold</span> = Finalized point (LCCA)</p><p><span class="highlight-green">🟩 Green line</span> = Selected chain path</p><p>Everything left of gold is <strong>permanent</strong>.</p>',
+                    highlight: 'legend',
+                },
+                {
+                    title: 'See them line up.',
+                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>The parallel blocks become a single ordered sequence.</p>',
+                    highlight: 'view-mode-controls',
+                    action: () => {
+                        // Switch to DAG view first to show the difference
+                        if (CONFIG.VIEW_MODE !== 'dag') {
+                            DOM.btnViewDag.click();
+                        }
+                    }
+                },
+                {
+                    title: 'This is DAGknight.',
+                    content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>.<br>No trade-off.</p>',
+                    highlight: null,
+                    final: true,
+                }
+            ],
+
+            open() {
+                this.currentStep = 0;
+                this.isOpen = true;
+                this.wasPlaying = !State.isPaused;
+                DOM.tutorialOverlay.classList.add('visible');
+                DOM.tutorialModal.classList.add('visible');
+                this.render();
+            },
+
+            close() {
+                this.isOpen = false;
+                DOM.tutorialOverlay.classList.remove('visible');
+                DOM.tutorialModal.classList.remove('visible');
+                this.clearHighlight();
+                // Resume if we were playing before
+                if (this.wasPlaying && State.isPaused) {
+                    DOM.btnPause.click();
+                }
+            },
+
+            next() {
+                if (this.currentStep < this.steps.length - 1) {
+                    this.currentStep++;
+                    this.render();
+                } else {
+                    this.close();
+                }
+            },
+
+            back() {
+                if (this.currentStep > 0) {
+                    this.currentStep--;
+                    this.render();
+                }
+            },
+
+            render() {
+                const step = this.steps[this.currentStep];
+
+                // Update step indicators
+                document.querySelectorAll('#tutorial-modal .step-dot').forEach((dot, i) => {
+                    dot.classList.remove('active', 'completed');
+                    if (i < this.currentStep) dot.classList.add('completed');
+                    if (i === this.currentStep) dot.classList.add('active');
+                });
+
+                // Update content
+                DOM.tutorialContent.innerHTML = `
+                    <h2>${step.title}</h2>
+                    ${step.content}
+                `;
+
+                // Update buttons
+                DOM.tutorialBack.style.visibility = this.currentStep === 0 ? 'hidden' : 'visible';
+
+                if (step.final) {
+                    DOM.tutorialNext.textContent = 'Close';
+                    DOM.tutorialNext.className = 'btn btn-primary';
+                    // Add share button
+                    DOM.tutorialContent.innerHTML += `
+                        <button class="btn btn-share" id="tutorial-share" style="margin-top: 16px; width: 100%;">
+                            Share on X
+                        </button>
+                    `;
+                    document.getElementById('tutorial-share').addEventListener('click', () => {
+                        const text = 'Kaspa processes 10 blocks/sec and still converges to a single chain. See it live:';
+                        const url = window.location.href;
+                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+                    });
+                } else {
+                    DOM.tutorialNext.textContent = 'Next →';
+                    DOM.tutorialNext.className = 'btn btn-primary';
+                }
+
+                // Execute step action
+                if (step.action) {
+                    step.action();
+                }
+
+                // Apply highlight
+                this.clearHighlight();
+                if (step.highlight) {
+                    const el = document.getElementById(step.highlight);
+                    if (el) {
+                        el.classList.add('tutorial-spotlight');
+                    }
+                }
+            },
+
+            clearHighlight() {
+                document.querySelectorAll('.tutorial-spotlight').forEach(el => {
+                    el.classList.remove('tutorial-spotlight');
+                });
+            }
+        };
+
+        // Tutorial event listeners
+        DOM.tutorialBtn.addEventListener('click', () => Tutorial.open());
+        DOM.tutorialOverlay.addEventListener('click', () => Tutorial.close());
+        DOM.tutorialBack.addEventListener('click', () => Tutorial.back());
+        DOM.tutorialNext.addEventListener('click', () => Tutorial.next());
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && Tutorial.isOpen) {
+                Tutorial.close();
+            }
+        });
 
         // ------------------------------------------------------------
         // Main
