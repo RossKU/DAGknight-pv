@@ -524,7 +524,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v142-touch-block-select',
+            VERSION: 'v143-white-block-select',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1067,17 +1067,17 @@
                 }
             }
 
-            // Draw selection highlight (pause mode only)
+            // Draw selection highlight (pause mode only) - white block
             if (State.isPaused && State.selectedBlockIndex !== null) {
                 const selIdx = State.selectedBlockIndex;
                 if (hashes[selIdx]) {
                     const selScreenX = (x[selIdx] - vpX) * zoom + halfWidth;
                     const selScreenY = (y[selIdx] - vpY) * zoom + halfHeight;
-                    const selSize = 20 * zoom;
+                    const selSize = size[selIdx] * zoom;
                     const selHalfSize = selSize / 2;
-                    // White outline highlight (thicker stroke, no fill)
+                    // White filled block (overwrites original color)
                     lcca.rect(selScreenX - selHalfSize, selScreenY - selHalfSize, selSize, selSize)
-                        .stroke({ width: 3, color: 0xFFFFFF });
+                        .fill({ color: 0xFFFFFF });
                 }
             }
 
@@ -3002,10 +3002,8 @@
             const blueScore = State.blockData.blueScore[idx];
             const blueWork = State.blockData.blueWork[idx] || '0';
 
-            // Hash: show first 8 and last 8 chars
-            DOM.infoHash.textContent = hash.length > 20
-                ? `${hash.slice(0, 8)}...${hash.slice(-8)}`
-                : hash;
+            // Hash: full display
+            DOM.infoHash.textContent = hash;
             DOM.infoDaa.textContent = daaScore.toLocaleString();
             DOM.infoBlueScore.textContent = blueScore.toLocaleString();
             DOM.infoBlueWork.textContent = blueWork;
