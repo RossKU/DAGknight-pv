@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v135-margin-150',
+            VERSION: 'v136-remove-debug-state',
 
             // Display
             MAX_BLOCKS: 500,
@@ -599,18 +599,6 @@
             sortedIndices: [],  // Cached: block indices sorted by X (updated in DAGknight calc, not every frame)
             lastDagknightCalc: 0,
 
-            // Debug info
-            debug: null,
-
-            // Performance profiling
-            perf: {
-                findLCCA: { calls: 0, time: 0 },
-                selectParent: { calls: 0, time: 0 },
-                selectBest: { calls: 0, time: 0 },
-                compareRank: { calls: 0 },
-                cacheHits: 0,
-            },
-
             // Selected Parent Cache (dkoder optimization)
             // Map<blockHash, selectedParentHash>
             selectedParentCache: new Map(),
@@ -647,28 +635,14 @@
                 // Caches (dkoder optimization)
                 ancestorCache: new Map(),      // "hashA:hashB" → boolean
                 kColouringCache: new Map(),    // "parents_hash:k" → result
-                ancestorCacheHits: 0,
-                ancestorCacheMisses: 0,
 
                 // Interval-based reachability (dkoder: reachability_service)
-                // Each block has interval [start, end] for O(1) chain ancestor check
                 intervalMap: new Map(),        // hash → {start, end}
                 intervalCounter: 0,            // Counter for interval assignment
-                intervalChainHits: 0,          // Times isChainAncestor returned true
-                intervalChainMisses: 0,        // Times fell back to BFS
 
-                // Performance profiling
-                perf: {
-                    isAncestor: { calls: 0, time: 0 },
-                    commonChainAncestor: { calls: 0, time: 0 },
-                    calcConflictZoneWork: { calls: 0, time: 0 },
-                    computeIntervals: { calls: 0, time: 0 },
-                    fillBounded: { calls: 0, time: 0 },
-                    kColouring: { calls: 0, time: 0 },
-                    checkBlueCandidate: { calls: 0, time: 0 },
-                    rank: { calls: 0, time: 0 },
-                    addBlockColoring: { calls: 0, time: 0 },
-                },
+                // Debug (minimal - K cluster and zone size only)
+                lastK: null,
+                lastZoneBlockCount: 0,
 
                 // Parameters
                 d: 10,  // deficit parameter for confirmation
@@ -801,12 +775,6 @@
 
             // Run DAGknight calculation periodically
             if (now - State.lastDagknightCalc >= CONFIG.UPDATE_INTERVAL) {
-                // Reset perf counters
-                State.perf.findLCCA = { calls: 0, time: 0 };
-                State.perf.selectParent = { calls: 0, time: 0 };
-                State.perf.selectBest = { calls: 0, time: 0 };
-                State.perf.compareRank = { calls: 0 };
-                State.perf.cacheHits = 0;
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
             }
@@ -1300,15 +1268,9 @@
             let totalWork = 0n;
             const visited = new Set();
             const validBlocks = [];  // Blocks with valid idx
-            let skippedCount = 0;    // Debug: blocks without idx
-            let firstBitsValues = []; // Debug: first few bits values
 
             // BFS from subgroup tips back to genesis
             const queue = [...subgroupHashes];
-
-            // Debug: track input
-            State.dagknight.lastSubgroupSize = subgroupHashes.length;
-            State.dagknight.lastGenesisExists = State.blockHashToIndex.has(genesisHash);
 
             while (queue.length > 0) {
                 const hash = queue.shift();
@@ -1317,27 +1279,16 @@
                 visited.add(hash);
 
                 // Skip dummy blocks from DAGknight calculation (visualization only)
-                if (isDummyHash(hash)) {
-                    skippedCount++;
-                    continue;
-                }
+                if (isDummyHash(hash)) continue;
 
                 const idx = State.blockHashToIndex.get(hash);
-                if (idx === undefined) {
-                    skippedCount++;
-                    continue;
-                }
+                if (idx === undefined) continue;
 
                 // Add this block's individual work (from bits, not cumulative blueWork)
                 const bits = State.blockData.bits[idx];
                 const work = calcWork(bits);
                 totalWork += work;
                 validBlocks.push(hash);
-
-                // Debug: track first few bits values
-                if (firstBitsValues.length < 3) {
-                    firstBitsValues.push({ bits, work: work.toString().length });
-                }
 
                 // Add parents to queue (if not past genesis, skip dummies)
                 const parents = State.blockData.parentHashes[idx] || [];
@@ -1351,12 +1302,8 @@
                 }
             }
 
-            // Debug: track zone stats
+            // Track zone size (for display)
             State.dagknight.lastZoneBlockCount = visited.size;
-            State.dagknight.lastValidBlockCount = validBlocks.length;
-            State.dagknight.lastSkippedCount = skippedCount;
-            State.dagknight.lastFirstBits = firstBitsValues;
-            State.dagknight.lastTotalWorkDigits = totalWork > 0n ? totalWork.toString().length : 0;
 
             // Return only valid blocks for kColouring
             return { zoneWork: totalWork, zoneBlocks: validBlocks };
@@ -1400,10 +1347,6 @@
             const candidateAnticoneBlues = countAnticoneBlues(candidateHash, mergesetBlues);
             if (candidateAnticoneBlues > k) {
                 checkBlueStats.check2++;
-                // Debug: track max anticone seen
-                if (!State.dagknight.maxAnticoneBlues || candidateAnticoneBlues > State.dagknight.maxAnticoneBlues) {
-                    State.dagknight.maxAnticoneBlues = candidateAnticoneBlues;
-                }
                 return false;
             }
 
@@ -1508,10 +1451,6 @@
                     mergesetReds.add(candidateHash);
                 }
             }
-
-            // Save debug stats
-            State.dagknight.lastCheckBlueStats = getCheckBlueStats();
-            State.dagknight.lastMergesetSize = mergeset.length;
 
             const result = {
                 selectedParent,
@@ -1803,18 +1742,6 @@
                 }
             }
 
-            // Debug: track incremental processing stats
-            State.dagknight.lastIncremental = {
-                input: zoneBlocks.length,
-                processed: blocksProcessed,
-                pending: pending.size,
-                iterations: iterations,
-                mergesetBlues: totalMergesetBlues,
-                mergesetReds: totalMergesetReds,
-                chainBlues: chainBlueCount,
-                finalBlueWork: finalBlueWork.toString().length,  // digits
-            };
-
             return {
                 selectedParent: finalSelectedParent,
                 mergesetBlues: allMergesetBlues,
@@ -1827,28 +1754,17 @@
         }
 
         // rank: Determine ranking by searching k-space (dkoder: rank)
-        // Optimized: limit k search to 32 (usually k=0-5 is enough)
+        // Optimized: limit k search to 64 (usually k=0-5 is enough)
         function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
             // Search for minimal k where blueWork >= zoneWork / 2
             const halfZoneWork = zoneWork / 2n;
             const MAX_K = 64;
 
-            State.dagknight.lastParentCount = subgroup.length;
-            let bluesAtK0 = 0;
-
             for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
-                if (k === 0) bluesAtK0 = data.blueCount;
-
-                State.dagknight.lastZoneWork = zoneWork.toString();
-                State.dagknight.lastBlueWork = data.blueWork.toString();
-                State.dagknight.lastBlueCount = data.blueCount;
-
                 if (data.blueWork >= halfZoneWork) {
-                    State.dagknight.lastK = k;
-                    State.dagknight.lastKFound = true;
-                    State.dagknight.lastBluesAtK0 = bluesAtK0;
+                    State.dagknight.lastK = k;  // Track K for display
                     return { k, subgroupVirtual: data };
                 }
             }
@@ -1856,19 +1772,12 @@
             // Fallback: use MAX_K
             const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
             State.dagknight.lastK = MAX_K;
-            State.dagknight.lastKFound = false;
-            State.dagknight.lastBlueCount = fallbackData.blueCount;
-            State.dagknight.lastBluesAtK0 = bluesAtK0;
             return { k: MAX_K, subgroupVirtual: fallbackData };
         }
 
         // dagknight: Main parent selection (dkoder: dagknight)
         // Returns { selectedParent, coloringResult, k } for batch coloring
         function dagknight(parentHashes) {
-            // Debug: track early return reason
-            State.dagknight.lastEarlyReturn = null;
-            State.dagknight.lastParentHashCount = parentHashes?.length || 0;
-
             // Helper: create fallback result with k=18
             const fallbackResult = (selectedParent) => {
                 const coloringResult = kColouring(parentHashes, 18);
@@ -1880,11 +1789,9 @@
             };
 
             if (!parentHashes || parentHashes.length === 0) {
-                State.dagknight.lastEarlyReturn = 'no-parents';
                 return { selectedParent: null, coloringResult: null, k: 0 };
             }
             if (parentHashes.length === 1) {
-                State.dagknight.lastEarlyReturn = 'single-parent';
                 return {
                     selectedParent: parentHashes[0],
                     coloringResult: { selectedParent: parentHashes[0], mergesetBlues: new Set(), mergesetReds: new Set() },
@@ -1894,20 +1801,13 @@
 
             // Step 1: Find conflict genesis (LCCA)
             const conflictGenesis = commonChainAncestor(parentHashes);
-            State.dagknight.lastConflictGenesis = conflictGenesis ? 'found' : 'null';
             if (!conflictGenesis) {
-                State.dagknight.lastEarlyReturn = 'no-genesis';
                 return fallbackResult(null);
             }
 
             // Step 2: Calculate zone work AND get zone blocks
             const { zoneWork, zoneBlocks } = calcConflictZoneWork(conflictGenesis, parentHashes);
-            // Debug: store actual zoneWork value
-            State.dagknight.lastZoneWorkRaw = zoneWork.toString();
-            State.dagknight.lastZoneBlocksLen = zoneBlocks.length;
-
             if (zoneWork === 0n) {
-                State.dagknight.lastEarlyReturn = 'zoneWork=0';
                 return fallbackResult(null);
             }
 
@@ -1917,7 +1817,6 @@
             computeIntervals(conflictGenesis, zoneSet);
 
             // Step 3: Rank using zone blocks (same blocks used for zoneWork)
-            State.dagknight.lastEarlyReturn = 'rank-called';
             const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
 
             // Return full result for batch coloring
@@ -2097,22 +1996,14 @@
 
             // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
             const chainResult = isChainAncestor(hashA, hashB);
-            if (chainResult === true) {
-                State.dagknight.intervalChainHits++;
-                return true;
-            }
-            if (chainResult === false) {
-                State.dagknight.intervalChainHits++;
-                return false;
-            }
+            if (chainResult === true) return true;
+            if (chainResult === false) return false;
             // chainResult === null means no interval data, fall through to BFS
 
             // Check cache (dkoder optimization)
             const cacheKey = hashA + ':' + hashB;
             const cached = State.dagknight.ancestorCache.get(cacheKey);
             if (cached !== undefined) return cached;
-
-            State.dagknight.intervalChainMisses++;  // Fell back to BFS
 
             const visited = new Set();
             const queue = [hashB];
@@ -2266,7 +2157,6 @@
 
         // Step 2.5: Compare RankValue (k, blueWork, selectedParentHash)
         function compareRank(hashA, hashB) {
-            State.perf.compareRank.calls++;
             const idxA = State.blockHashToIndex.get(hashA);
             const idxB = State.blockHashToIndex.get(hashB);
             if (idxA === undefined || idxB === undefined) return 0;
@@ -2640,18 +2530,7 @@
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
-                State.debug = {
-                    tips: tips.length,
-                    chainLen: chainList.length,
-                    linearLen: linearOrder.length,
-                    calcTime: calcTime.toFixed(1),
-                };
-
                 // --- DAGknight Coloring: Dynamic k-search with caching ---
-                // Reset interval-based reachability counters
-                State.dagknight.intervalChainHits = 0;
-                State.dagknight.intervalChainMisses = 0;
-
                 const { PENDING, BLUE, RED } = State.dagknight;
                 let coloredCount = 0;
                 const processedParentSets = new Set();  // Cache: avoid duplicate calculations
@@ -2726,10 +2605,6 @@
                         coloredCount++;
                     }
                 }
-
-                // Debug: track stats
-                State.dagknight.lastColoredCount = coloredCount;
-                State.dagknight.lastProcessedTips = tipsToProcess.length;
                 // --- End DAGknight Coloring ---
 
                 // Assign linearIndex and targetX to linearized blocks
@@ -2801,10 +2676,6 @@
                     }
                 }
 
-                if (removedCount > 0) {
-                    State.debug.removed = removedCount;
-                }
-
                 // Update cached sorted indices (by X descending = newest first)
                 // This avoids O(n log n) sort every frame in renderDAG
                 const { x } = State.blockData;
@@ -2816,7 +2687,6 @@
                 }
                 State.sortedIndices.sort((a, b) => x[b] - x[a]);
             } catch (error) {
-                State.debug = { error: error.message };
                 console.error('DAGknight calculation error:', error);
             }
         }
@@ -3070,104 +2940,23 @@
             if (DOM.debugInfo) {
                 const lines = [];
 
-                // Line 1: Version and timing
-                let line1 = `${CONFIG.VERSION}`;
-                if (State.debug?.error) {
-                    line1 += ` | ERR: ${State.debug.error}`;
-                } else if (State.debug) {
-                    line1 += ` | T:${State.debug.calcTime}ms`;
-                }
-                lines.push(line1);
+                // Version
+                lines.push(CONFIG.VERSION);
 
-                // Line 2: dagknight flow debug
-                if (State.debug && !State.debug.error) {
-                    let line2 = `ret:${State.dagknight.lastEarlyReturn ?? '?'}`;
-                    line2 += ` | parents:${State.dagknight.lastParentHashCount ?? 0}`;
-                    line2 += ` genesis:${State.dagknight.lastConflictGenesis ?? '?'}`;
-                    line2 += ` | zW:${State.dagknight.lastTotalWorkDigits ?? 0}桁`;
-                    line2 += ` zBlks:${State.dagknight.lastZoneBlocksLen ?? 0}`;
-                    lines.push(line2);
+                // K cluster size and zone block count (minimal debug)
+                const kVal = State.dagknight.lastK ?? '-';
+                const zoneBlocks = State.dagknight.lastZoneBlockCount ?? 0;
+                lines.push(`k:${kVal} | zone:${zoneBlocks}`);
 
-                    // Line 3: zone details
-                    const kVal = State.dagknight.lastK ?? '-';
-                    const kStatus = State.dagknight.lastKFound ? '✓' : '(MAX)';
-                    let line3 = `k:${kVal}${kStatus}`;
-                    if (State.dagknight.lastZoneBlockCount !== undefined) {
-                        const valid = State.dagknight.lastValidBlockCount ?? 0;
-                        const skipped = State.dagknight.lastSkippedCount ?? 0;
-                        line3 += ` | zone:${valid}/${State.dagknight.lastZoneBlockCount}`;
-                        if (skipped > 0) {
-                            line3 += `(skip:${skipped})`;
-                        }
-                    }
-                    // Show first bits values
-                    if (State.dagknight.lastFirstBits?.length > 0) {
-                        const fb = State.dagknight.lastFirstBits[0];
-                        line3 += ` | 1st bits:${fb.bits ? '0x' + fb.bits.toString(16) : 'null'} w:${fb.work}桁`;
-                    }
-                    lines.push(line3);
-
-                    // Line 4: Incremental processing stats (dkoder-aligned)
-                    const inc = State.dagknight.lastIncremental;
-                    if (inc) {
-                        let line4 = `proc:${inc.processed}/${inc.input}`;
-                        if (inc.pending > 0) line4 += `(pend:${inc.pending})`;
-                        line4 += ` iter:${inc.iterations}`;
-                        line4 += ` | bW:${inc.finalBlueWork}桁`;
-                        lines.push(line4);
-
-                        // Line 5: Blue composition
-                        let line5 = `chain:${inc.chainBlues} mBlue:${inc.mergesetBlues} mRed:${inc.mergesetReds}`;
-                        const bluesNow = State.dagknight.lastBlueCount ?? 0;
-                        line5 += ` | total:${bluesNow}`;
-                        lines.push(line5);
-                    } else {
-                        // Fallback to old format
-                        const bluesNow = State.dagknight.lastBlueCount ?? 0;
-                        let line4 = `blues:${bluesNow}`;
-                        line4 += ` | col:${State.dagknight.lastColoredCount || 0}`;
-                        lines.push(line4);
-                    }
-
-                    // Line 6: Detailed k-colouring stats (if available)
-                    const stats = State.dagknight.lastCheckBlueStats;
-                    if (stats && (stats.check1 > 0 || stats.check2 > 0 || stats.check3 > 0)) {
-                        let line6 = `reject: c1:${stats.check1} c2:${stats.check2} c3:${stats.check3}`;
-                        line6 += ` pass:${stats.passed}`;
-                        lines.push(line6);
-                    }
-                }
-
-                // Line 7: Dummy block simulation status
+                // Dummy status
                 if (CONFIG.DUMMY.ENABLED) {
-                    const effectiveBPS = 1 + CONFIG.DUMMY.MULTIPLIER;
-                    let lineDummy = `[DUMMY] ${effectiveBPS}x BPS`;
-                    lineDummy += ` | gen:${State.dummyBlockCount}`;
-                    lineDummy += ` tips:${State.dummyTips.size}`;
-                    lines.push(lineDummy);
-                } else {
-                    lines.push(`[DUMMY] OFF`);
+                    lines.push(`[DUMMY] ${1 + CONFIG.DUMMY.MULTIPLIER}x BPS`);
                 }
 
-                // Viewport debug info
+                // Viewport debug (temporary)
                 const canvasW = State.app?.canvas?.clientWidth ?? 0;
-                const canvasH = State.app?.canvas?.clientHeight ?? 0;
                 const vpW = State.viewport.width;
-                const vpH = State.viewport.height;
-                const vpX = State.viewport.x.toFixed(0);
-                const vpTX = State.viewport.targetX.toFixed(0);
-                const zoom = State.viewport.zoom.toFixed(2);
-                lines.push(`[VP] canvas:${canvasW}x${canvasH} vp:${vpW}x${vpH}`);
-                lines.push(`[VP] x:${vpX} tX:${vpTX} zoom:${zoom}`);
-
-                // DAG position info
-                if (State.maxDaaScore !== null && State.minDaaScore !== null) {
-                    const maxCol = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const maxX = maxCol * CONFIG.DAA_COLUMN_WIDTH;
-                    const halfW = vpW / 2;
-                    const correctVpX = (maxX - halfW / State.viewport.zoom + 80 / State.viewport.zoom).toFixed(0);
-                    lines.push(`[DAG] maxX:${maxX} halfW:${halfW.toFixed(0)} correctX:${correctVpX}`);
-                }
+                lines.push(`canvas:${canvasW} vp:${vpW}`);
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
             }
