@@ -524,7 +524,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v141-block-info-panel',
+            VERSION: 'v142-touch-block-select',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3320,6 +3320,7 @@
             let isDragging = false;
             let lastMouse = { x: 0, y: 0 };
             let lastPinchDist = 0;
+            let touchStartPos = null;  // For tap detection
 
             // Mouse events (desktop)
             State.app.canvas.addEventListener('mousedown', (e) => {
@@ -3347,9 +3348,11 @@
                 if (e.touches.length === 1) {
                     isDragging = true;
                     lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                 } else if (e.touches.length === 2) {
                     // Pinch zoom start
                     isDragging = false;
+                    touchStartPos = null;
                     const dx = e.touches[1].clientX - e.touches[0].clientX;
                     const dy = e.touches[1].clientY - e.touches[0].clientY;
                     lastPinchDist = Math.sqrt(dx * dx + dy * dy);
@@ -3378,9 +3381,54 @@
                 }
             }, { passive: false });
 
-            State.app.canvas.addEventListener('touchend', () => {
+            State.app.canvas.addEventListener('touchend', (e) => {
+                // Detect tap (no significant movement) for block selection
+                if (State.isPaused && touchStartPos && e.changedTouches.length === 1) {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const moveDist = Math.sqrt(
+                        Math.pow(endX - touchStartPos.x, 2) +
+                        Math.pow(endY - touchStartPos.y, 2)
+                    );
+
+                    // If moved less than 10px, treat as tap
+                    if (moveDist < 10) {
+                        const rect = State.app.canvas.getBoundingClientRect();
+                        const tapX = endX - rect.left;
+                        const tapY = endY - rect.top;
+
+                        // Convert screen coords to world coords
+                        const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
+                        const halfWidth = width / 2;
+                        const halfHeight = height / 2;
+                        const worldX = (tapX - halfWidth) / zoom + vpX;
+                        const worldY = (tapY - halfHeight) / zoom + vpY;
+
+                        // Hit test: find nearest block within radius
+                        const hitRadius = CONFIG.BLOCK_SIZE_VIRTUAL * 2;  // Larger radius for touch
+                        let foundIdx = null;
+                        let minDist = hitRadius;
+
+                        const { x, y, hashes } = State.blockData;
+                        for (let i = 0; i < State.blockCount; i++) {
+                            if (!hashes[i]) continue;
+                            const dx = x[i] - worldX;
+                            const dy = y[i] - worldY;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                foundIdx = i;
+                            }
+                        }
+
+                        State.selectedBlockIndex = foundIdx;
+                        updateBlockInfo();
+                    }
+                }
+
                 isDragging = false;
                 lastPinchDist = 0;
+                touchStartPos = null;
             });
 
             // Zoom with mouse wheel (right edge anchor)
