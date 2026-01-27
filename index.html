@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v128-dag-zoom-fix',
+            VERSION: 'v129-dag-zoom-margin',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2712,14 +2712,15 @@
                 // Assign linearIndex and targetX to linearized blocks
                 // Position blocks based on view mode
                 if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: Keep newest block at right edge (zoom-aware)
+                    // DAG mode: Keep newest block inside right edge (zoom-aware)
                     if (State.maxDaaScore !== null && State.minDaaScore !== null) {
                         const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                         const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
                         const halfWidth = State.viewport.width / 2;
                         const zoom = State.viewport.zoom;
-                        // Position viewport so maxX is at right edge of screen
-                        State.viewport.targetX = maxX - halfWidth / zoom;
+                        const margin = 80 / zoom;  // 80px margin from right edge
+                        // Position viewport so maxX is inside right edge
+                        State.viewport.targetX = maxX - halfWidth / zoom + margin;
                     }
                     // targetX/Y already set in addBlock, no changes needed
                 } else {
