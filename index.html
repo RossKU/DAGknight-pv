@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v126-dag-pan-persist',
+            VERSION: 'v125-pause-buffer',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2712,7 +2712,12 @@
                 // Assign linearIndex and targetX to linearized blocks
                 // Position blocks based on view mode
                 if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: Don't auto-update viewport (user controls via drag)
+                    // DAG mode: Keep newest block at right side (same as Linear mode)
+                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                        const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                        const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                        State.viewport.targetX = maxX - CONFIG.SPAWN_X;
+                    }
                     // targetX/Y already set in addBlock, no changes needed
                 } else {
                     // Linear mode: linearized blocks align to chain
