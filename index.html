@@ -685,6 +685,8 @@
                 <div class="step-dot" data-step="3"></div>
                 <div class="step-dot" data-step="4"></div>
                 <div class="step-dot" data-step="5"></div>
+                <div class="step-dot" data-step="6"></div>
+                <div class="step-dot" data-step="7"></div>
             </div>
             <div class="content" id="tutorial-content">
                 <!-- Content injected by JS -->
@@ -3722,41 +3724,62 @@
             wasPlaying: false,  // Track if we were playing before tutorial
 
             steps: [
+                // Step 1: Hook
                 {
-                    title: 'A blockchain pushed to the limit.<br>Mathematically.',
-                    content: '<span class="big-number">10 blocks/sec</span><p>You\'re watching it live.</p>',
+                    title: 'A mathematically optimized blockchain.',
+                    content: '<span class="big-number">10 blocks/sec</span><p>Live.</p>',
                     highlight: null,
                 },
+                // Step 2: Linear looks parallel
                 {
-                    title: 'Multiple blocks created simultaneously.',
-                    content: '<p>When the network is this fast, blocks are created in parallel.</p><p>What happens to them?</p>',
+                    title: 'This chain looks linear...',
+                    content: '<p>But it\'s actually <strong>parallel branches</strong>.</p>',
                     highlight: null,
                     action: () => {
-                        // Pause to show the DAG structure
+                        // Ensure Linear mode
+                        if (CONFIG.VIEW_MODE !== 'linear') {
+                            DOM.btnViewLinear.click();
+                        }
+                    }
+                },
+                // Step 3: Switch to DAG + problem
+                {
+                    title: 'Ordering parallel blocks is hard.',
+                    content: '<p>Deterministic ordering of parallel structures is considered difficult.</p><p>How did they solve it?</p>',
+                    highlight: 'view-mode-controls',
+                    action: () => {
+                        // Switch to DAG view
+                        if (CONFIG.VIEW_MODE !== 'dag') {
+                            DOM.btnViewDag.click();
+                        }
+                        // Pause to examine
                         if (!State.isPaused) {
                             DOM.btnPause.click();
                         }
                     }
                 },
+                // Step 4: Why parallel happens
                 {
-                    title: 'All blocks are included.<br>And ordered into a single chain.',
-                    content: '<p><span class="highlight-gold">🟨 Gold</span> = Finalized point (LCCA)</p><p><span class="highlight-green">🟩 Green line</span> = Selected chain path</p><p>Everything left of gold is <strong>permanent</strong>.</p>',
+                    title: 'Blocks are created before seeing each other.',
+                    content: '<p>Network delay creates parallel branches.</p><p>This is natural in a fast network.</p>',
+                    highlight: null,
+                },
+                // Step 5: LCCA explanation
+                {
+                    title: 'All blocks are included and ordered.',
+                    content: '<p><span class="highlight-gold">🟨 Gold</span> = Finalized point (LCCA)</p><p><span class="highlight-green">🟩 Green</span> = Selected chain path</p><p>Everything left of gold is <strong>permanent</strong>.</p>',
                     highlight: 'legend',
                 },
+                // Step 6: Linear view result
                 {
                     title: 'See them line up.',
-                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>The parallel blocks become a single ordered sequence.</p>',
+                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>Parallel blocks become a single ordered sequence.</p>',
                     highlight: 'view-mode-controls',
-                    action: () => {
-                        // Switch to DAG view first to show the difference
-                        if (CONFIG.VIEW_MODE !== 'dag') {
-                            DOM.btnViewDag.click();
-                        }
-                    }
                 },
+                // Step 7: Conclusion
                 {
                     title: 'This is DAGknight.',
-                    content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>.<br>No trade-off.</p>',
+                    content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>. No trade-off.</p>',
                     highlight: null,
                     final: true,
                 }
