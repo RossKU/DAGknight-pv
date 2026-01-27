@@ -604,10 +604,9 @@
 
         /* Spotlight highlight for tutorial */
         .tutorial-spotlight {
-            box-shadow: 0 0 0 4px rgba(74, 144, 217, 0.8), 0 0 20px rgba(74, 144, 217, 0.5), 0 0 0 9999px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 0 0 4px rgba(74, 144, 217, 0.8), 0 0 20px rgba(74, 144, 217, 0.5);
             border-radius: 8px;
-            position: relative;
-            z-index: 502;
+            z-index: 502 !important;
         }
     </style>
 </head>
@@ -3854,10 +3853,7 @@
                     const el = document.getElementById(step.highlight);
                     if (el) {
                         el.classList.add('tutorial-spotlight');
-                        DOM.tutorialOverlay.style.background = 'transparent';
                     }
-                } else {
-                    DOM.tutorialOverlay.style.background = 'rgba(0, 0, 0, 0.7)';
                 }
             },
 
@@ -3865,7 +3861,6 @@
                 document.querySelectorAll('.tutorial-spotlight').forEach(el => {
                     el.classList.remove('tutorial-spotlight');
                 });
-                DOM.tutorialOverlay.style.background = 'rgba(0, 0, 0, 0.7)';
             }
         };
 
