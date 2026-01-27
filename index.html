@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v139-margin-1.5x',
+            VERSION: 'v140-pause-mode-switch',
 
             // Display
             MAX_BLOCKS: 500,
@@ -761,7 +761,10 @@
         // Render Loop
         // ------------------------------------------------------------
         function onTick(ticker) {
-            if (State.isPaused) return;
+            if (State.isPaused) {
+                renderDAG();  // Keep rendering during pause (for mode switching)
+                return;
+            }
 
             // Update FPS counter
             State.stats.frameCount++;
