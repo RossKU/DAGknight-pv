@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v130-canvas-client-size',
+            VERSION: 'v131-resize-viewport-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -756,9 +756,31 @@
         }
 
         function onResize() {
-            // Use actual displayed pixel dimensions
-            State.viewport.width = State.app.canvas.clientWidth;
-            State.viewport.height = State.app.canvas.clientHeight;
+            // Get old and new dimensions
+            const oldWidth = State.viewport.width;
+            const oldHeight = State.viewport.height;
+            const newWidth = State.app.canvas.clientWidth;
+            const newHeight = State.app.canvas.clientHeight;
+
+            // Skip if no change
+            if (oldWidth === newWidth && oldHeight === newHeight) return;
+
+            const zoom = State.viewport.zoom;
+
+            // Adjust viewport to keep right edge at same world position
+            // This prevents origin from shifting on resize
+            const oldHalfWidth = oldWidth / 2;
+            const newHalfWidth = newWidth / 2;
+            const oldHalfHeight = oldHeight / 2;
+            const newHalfHeight = newHeight / 2;
+
+            State.viewport.x += (oldHalfWidth - newHalfWidth) / zoom;
+            State.viewport.y += (oldHalfHeight - newHalfHeight) / zoom;
+            State.viewport.targetX = State.viewport.x;
+
+            // Update stored dimensions
+            State.viewport.width = newWidth;
+            State.viewport.height = newHeight;
         }
 
         // ------------------------------------------------------------
