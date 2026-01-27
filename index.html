@@ -3728,14 +3728,14 @@
             steps: [
                 // Step 1: Hook
                 {
-                    title: 'A mathematically optimized blockchain.',
-                    content: '<span class="big-number">10 blocks/sec</span><p>Live.</p>',
+                    title: '10 blocks per second.',
+                    content: '<p>This blockchain creates blocks <strong>600x faster</strong> than Bitcoin.</p><p>You\'re watching it live.</p>',
                     highlight: null,
                 },
-                // Step 2: Linear looks parallel
+                // Step 2: Problem
                 {
-                    title: 'This chain looks linear...',
-                    content: '<p>But it\'s actually <strong>parallel branches</strong>.</p>',
+                    title: 'But there\'s a problem.',
+                    content: '<p>When blocks are created this fast, multiple blocks are born at the same time.</p><p>They don\'t know about each other.</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'linear') {
@@ -3743,10 +3743,10 @@
                         }
                     }
                 },
-                // Step 3: Switch to DAG + problem
+                // Step 3: Show DAG
                 {
-                    title: 'Ordering parallel blocks is hard.',
-                    content: '<p>Deterministic ordering of parallel structures is considered difficult.</p><p>How did they solve it?</p>',
+                    title: 'Look. There are branches.',
+                    content: '<p>See the parallel structure?</p><p>Which one is the "correct" chain?</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') {
@@ -3754,40 +3754,40 @@
                         }
                     }
                 },
-                // Step 4: Why parallel - timing mismatch
+                // Step 4: Answer
                 {
-                    title: 'Why parallel? Timing mismatch.',
-                    content: '<p>Block creation (0.1 sec) is <strong>much faster</strong> than network propagation.</p><p>Blocks created almost simultaneously don\'t know about each other.</p>',
+                    title: 'The answer: include everything.',
+                    content: '<p>Don\'t throw away any blocks.</p><p>But decide the <strong>order</strong>.</p>',
                     highlight: null,
                 },
-                // Step 5: Need deterministic ordering
+                // Step 5: Green line
                 {
-                    title: 'Deterministic ordering is needed.',
-                    content: '<p>These parallel blocks must be ordered into a single chain.</p><p>Starting from tips, select the parent with highest trust (blue work).</p><p>This forms the <span class="highlight-green">green line</span> — the Selected Chain.</p>',
+                    title: 'The green line = chosen path.',
+                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">Selected Chain</span>.</p>',
                     highlight: null,
                 },
-                // Step 6: LCCA
+                // Step 6: Gold = finalized
                 {
-                    title: 'Where all paths meet: LCCA.',
-                    content: '<p>The point where all tips converge is called <strong>LCCA</strong>.</p><p>It\'s the most trusted common ancestor.</p><p><span class="highlight-gold">🟨 Gold block</span> = LCCA. Everything before it is <strong>finalized</strong>.</p>',
+                    title: 'Gold = finalized.',
+                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all paths agree.</p><p>Everything to the left of it is <strong>permanent</strong>. It won\'t change.</p>',
                     highlight: 'legend',
                 },
                 // Step 7: Linearization
                 {
-                    title: 'Ordering the conflict zone.',
-                    content: '<p>Between LCCA and tips, blocks compete.</p><p>They\'re ordered by inserting parallel blocks between chain blocks, sorted by work.</p><p>Result: a deterministic linear order.</p>',
+                    title: 'Making it a single line.',
+                    content: '<p>In the finalized area, blocks are arranged into one sequence.</p><p>The green line is the backbone. Other blocks are inserted between, sorted by weight.</p>',
                     highlight: null,
                 },
-                // Step 8: Linear view result
+                // Step 8: Result
                 {
                     title: 'See them line up.',
-                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>The parallel structure becomes a single ordered sequence.</p>',
+                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>All those parallel blocks → one ordered sequence.</p>',
                     highlight: 'view-mode-controls',
                 },
                 // Step 9: Conclusion
                 {
                     title: 'This is DAGknight.',
-                    content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>. No trade-off.</p>',
+                    content: '<p>Fast <strong>and</strong> secure.</p><p>No trade-off.</p>',
                     highlight: null,
                     final: true,
                 }
