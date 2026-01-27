@@ -197,6 +197,16 @@
             margin-top: 8px;
             text-align: center;
         }
+        #block-info.clickable {
+            cursor: pointer;
+            border-color: rgba(74, 144, 217, 0.8);
+        }
+        #block-info.clickable:hover {
+            background: rgba(20, 30, 50, 0.95);
+        }
+        #block-info.clickable .hint {
+            color: #4A90D9;
+        }
 
         /* Header */
         #header {
@@ -471,7 +481,7 @@
             <div class="row"><span class="label">DAA Score</span><span class="value" id="info-daa">-</span></div>
             <div class="row"><span class="label">Blue Score</span><span class="value" id="info-blue-score">-</span></div>
             <div class="row"><span class="label">Blue Work</span><span class="value" id="info-blue-work">-</span></div>
-            <div class="hint">Tap a block to inspect</div>
+            <div class="hint" id="info-hint">Tap a block to inspect</div>
         </div>
 
         <div id="legend">
@@ -524,7 +534,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v143-white-block-select',
+            VERSION: 'v144-kaspa-stream-link',
 
             // Display
             MAX_BLOCKS: 500,
@@ -735,6 +745,7 @@
             infoDaa: document.getElementById('info-daa'),
             infoBlueScore: document.getElementById('info-blue-score'),
             infoBlueWork: document.getElementById('info-blue-work'),
+            infoHint: document.getElementById('info-hint'),
         };
 
         // ------------------------------------------------------------
@@ -2995,6 +3006,8 @@
                 DOM.infoDaa.textContent = '-';
                 DOM.infoBlueScore.textContent = '-';
                 DOM.infoBlueWork.textContent = '-';
+                DOM.blockInfo.classList.remove('clickable');
+                DOM.infoHint.textContent = 'Tap a block to inspect';
                 return;
             }
             const hash = State.blockData.hashes[idx];
@@ -3007,6 +3020,10 @@
             DOM.infoDaa.textContent = daaScore.toLocaleString();
             DOM.infoBlueScore.textContent = blueScore.toLocaleString();
             DOM.infoBlueWork.textContent = blueWork;
+
+            // Enable link to kaspa.stream
+            DOM.blockInfo.classList.add('clickable');
+            DOM.infoHint.textContent = 'Tap to view on kaspa.stream';
         }
 
         function updateStatsDisplay() {
@@ -3172,6 +3189,14 @@
                 State.linearOrder = [];
                 State.lccaHash = null;
                 State.sortedIndices = [];
+            });
+
+            // Block info panel click -> open kaspa.stream
+            DOM.blockInfo.addEventListener('click', () => {
+                const idx = State.selectedBlockIndex;
+                if (idx === null || !State.blockData.hashes[idx]) return;
+                const hash = State.blockData.hashes[idx];
+                window.open(`https://kaspa.stream/block/${hash}`, '_blank');
             });
 
             // Zoom with right edge as anchor point
