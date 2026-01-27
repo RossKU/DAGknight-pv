@@ -156,6 +156,48 @@
         .color-vspc { background: #00FF88; box-shadow: 0 0 8px #00FF88; }
         .color-lcca { background: #FFD700; box-shadow: 0 0 8px #FFD700; }
 
+        /* Block Info Panel (shown during pause) */
+        #block-info {
+            position: absolute;
+            bottom: 70px;
+            left: 16px;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.9);
+            border: 1px solid rgba(74, 144, 217, 0.5);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 11px;
+            backdrop-filter: blur(8px);
+            display: none;
+            min-width: 200px;
+            max-width: calc(100vw - 32px);
+        }
+        #block-info.visible { display: block; }
+        #block-info .title {
+            font-weight: bold;
+            color: #4A90D9;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        #block-info .row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            gap: 12px;
+        }
+        #block-info .label { color: #888; }
+        #block-info .value {
+            color: #fff;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        #block-info .hint {
+            color: #666;
+            font-size: 10px;
+            margin-top: 8px;
+            text-align: center;
+        }
+
         /* Header */
         #header {
             position: absolute;
@@ -423,6 +465,15 @@
             <div id="debug-info" style="font-size: 10px; color: #888; margin-top: 8px;"></div>
         </div>
 
+        <div id="block-info">
+            <div class="title">Block Info</div>
+            <div class="row"><span class="label">Hash</span><span class="value" id="info-hash">-</span></div>
+            <div class="row"><span class="label">DAA Score</span><span class="value" id="info-daa">-</span></div>
+            <div class="row"><span class="label">Blue Score</span><span class="value" id="info-blue-score">-</span></div>
+            <div class="row"><span class="label">Blue Work</span><span class="value" id="info-blue-work">-</span></div>
+            <div class="hint">Tap a block to inspect</div>
+        </div>
+
         <div id="legend">
             <div class="item"><div class="color color-pending"></div> Pending</div>
             <div class="item"><div class="color color-blue"></div> Blue Block</div>
@@ -473,7 +524,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v140-pause-mode-switch',
+            VERSION: 'v141-block-info-panel',
 
             // Display
             MAX_BLOCKS: 500,
@@ -534,6 +585,7 @@
             pauseStartTime: null,      // When pause started (for 5-sec timeout)
             pauseBuffer: [],           // Blocks received during pause
             pauseExpired: false,       // True if paused > 5 seconds
+            selectedBlockIndex: null,  // Selected block for info display (pause mode)
 
             // Block data (TypedArrays for performance)
             blockData: {
@@ -677,6 +729,12 @@
             // View mode controls
             btnViewLinear: document.getElementById('btn-view-linear'),
             btnViewDag: document.getElementById('btn-view-dag'),
+            // Block info panel
+            blockInfo: document.getElementById('block-info'),
+            infoHash: document.getElementById('info-hash'),
+            infoDaa: document.getElementById('info-daa'),
+            infoBlueScore: document.getElementById('info-blue-score'),
+            infoBlueWork: document.getElementById('info-blue-work'),
         };
 
         // ------------------------------------------------------------
@@ -1006,6 +1064,20 @@
                             .fill({ color: CONFIG.COLORS.LCCA })  // Yellow/Gold
                             .stroke({ width: 1, color: CONFIG.COLORS.WHITE });
                     }
+                }
+            }
+
+            // Draw selection highlight (pause mode only)
+            if (State.isPaused && State.selectedBlockIndex !== null) {
+                const selIdx = State.selectedBlockIndex;
+                if (hashes[selIdx]) {
+                    const selScreenX = (x[selIdx] - vpX) * zoom + halfWidth;
+                    const selScreenY = (y[selIdx] - vpY) * zoom + halfHeight;
+                    const selSize = 20 * zoom;
+                    const selHalfSize = selSize / 2;
+                    // White outline highlight (thicker stroke, no fill)
+                    lcca.rect(selScreenX - selHalfSize, selScreenY - selHalfSize, selSize, selSize)
+                        .stroke({ width: 3, color: 0xFFFFFF });
                 }
             }
 
@@ -2915,6 +2987,30 @@
             DOM.loading.classList.add('hidden');
         }
 
+        // Update block info panel (pause mode only)
+        function updateBlockInfo() {
+            const idx = State.selectedBlockIndex;
+            if (idx === null || !State.blockData.hashes[idx]) {
+                DOM.infoHash.textContent = '-';
+                DOM.infoDaa.textContent = '-';
+                DOM.infoBlueScore.textContent = '-';
+                DOM.infoBlueWork.textContent = '-';
+                return;
+            }
+            const hash = State.blockData.hashes[idx];
+            const daaScore = State.blockData.daaScore[idx];
+            const blueScore = State.blockData.blueScore[idx];
+            const blueWork = State.blockData.blueWork[idx] || '0';
+
+            // Hash: show first 8 and last 8 chars
+            DOM.infoHash.textContent = hash.length > 20
+                ? `${hash.slice(0, 8)}...${hash.slice(-8)}`
+                : hash;
+            DOM.infoDaa.textContent = daaScore.toLocaleString();
+            DOM.infoBlueScore.textContent = blueScore.toLocaleString();
+            DOM.infoBlueWork.textContent = blueWork;
+        }
+
         function updateStatsDisplay() {
             // Block count (moved from addBlock - 1/sec instead of per-block)
             DOM.blockCount.textContent = State.blockCount;
@@ -3002,7 +3098,10 @@
                     State.pauseStartTime = Date.now();
                     State.pauseBuffer = [];
                     State.pauseExpired = false;
+                    State.selectedBlockIndex = null;
                     DOM.btnPause.textContent = 'Resume (5s)';
+                    DOM.blockInfo.classList.add('visible');
+                    updateBlockInfo();
 
                     // Start countdown timer
                     let remaining = 5;
@@ -3034,7 +3133,9 @@
                     State.pauseBuffer = [];
                     State.isPaused = false;
                     State.pauseStartTime = null;
+                    State.selectedBlockIndex = null;
                     DOM.btnPause.textContent = 'Pause';
+                    DOM.blockInfo.classList.remove('visible');
 
                     // Add all buffered blocks
                     for (const block of bufferedBlocks) {
@@ -3059,8 +3160,10 @@
                 State.pauseStartTime = null;
                 State.pauseBuffer = [];
                 State.pauseExpired = false;
+                State.selectedBlockIndex = null;
                 DOM.btnPause.disabled = false;
                 DOM.btnPause.textContent = 'Pause';
+                DOM.blockInfo.classList.remove('visible');
 
                 // Reset DAG state
                 State.minDaaScore = null;
@@ -3286,6 +3389,42 @@
                 const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                 const newZoom = Math.max(0.2, Math.min(3, State.viewport.zoom * zoomFactor));
                 zoomWithRightAnchor(newZoom);
+            });
+
+            // Block selection (pause mode only) - click handler
+            State.app.canvas.addEventListener('click', (e) => {
+                if (!State.isPaused) return;
+
+                const rect = State.app.canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                // Convert screen coords to world coords
+                const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
+                const halfWidth = width / 2;
+                const halfHeight = height / 2;
+                const worldX = (clickX - halfWidth) / zoom + vpX;
+                const worldY = (clickY - halfHeight) / zoom + vpY;
+
+                // Hit test: find nearest block within radius
+                const hitRadius = CONFIG.BLOCK_SIZE_VIRTUAL / zoom;
+                let foundIdx = null;
+                let minDist = hitRadius;
+
+                const { x, y, hashes } = State.blockData;
+                for (let i = 0; i < State.blockCount; i++) {
+                    if (!hashes[i]) continue;
+                    const dx = x[i] - worldX;
+                    const dy = y[i] - worldY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        foundIdx = i;
+                    }
+                }
+
+                State.selectedBlockIndex = foundIdx;
+                updateBlockInfo();
             });
         }
 
