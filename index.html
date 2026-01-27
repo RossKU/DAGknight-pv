@@ -459,8 +459,8 @@
                 <span class="value" id="network-name">-</span>
             </div>
             <div class="row">
-                <span class="label">Blue Score</span>
-                <span class="value" id="blue-score">-</span>
+                <span class="label">DAA Score</span>
+                <span class="value" id="daa-score">-</span>
             </div>
             <div class="row">
                 <span class="label">Blocks</span>
@@ -534,7 +534,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v144-kaspa-stream-link',
+            VERSION: 'v145-daa-score-display',
 
             // Display
             MAX_BLOCKS: 500,
@@ -721,7 +721,7 @@
             status: document.getElementById('status'),
             connectionStatus: document.getElementById('connection-status'),
             networkName: document.getElementById('network-name'),
-            blueScore: document.getElementById('blue-score'),
+            daaScore: document.getElementById('daa-score'),
             blockCount: document.getElementById('block-count'),
             fpsDisplay: document.getElementById('fps-display'),
             drawCalls: document.getElementById('draw-calls'),
@@ -2944,7 +2944,6 @@
                 DOM.status.classList.add('connected');
                 DOM.connectionStatus.textContent = 'Connected';
                 DOM.networkName.textContent = 'Mainnet';
-                DOM.blueScore.textContent = Number(info.virtualDaaScore).toLocaleString();
 
                 // Subscribe to new blocks
                 await subscribeToBlocks();
@@ -3029,6 +3028,11 @@
         function updateStatsDisplay() {
             // Block count (moved from addBlock - 1/sec instead of per-block)
             DOM.blockCount.textContent = State.blockCount;
+
+            // DAA Score (latest)
+            DOM.daaScore.textContent = State.maxDaaScore !== null
+                ? State.maxDaaScore.toLocaleString()
+                : '-';
 
             // FPS
             DOM.fpsDisplay.textContent = `${State.stats.fps} FPS`;
