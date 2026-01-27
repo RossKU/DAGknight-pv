@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v129-dag-zoom-margin',
+            VERSION: 'v130-canvas-client-size',
 
             // Display
             MAX_BLOCKS: 500,
@@ -744,9 +744,9 @@
             State.app.stage.addChild(State.graphics.chainBlocks);    // 6. Chain blocks (large, front)
             State.app.stage.addChild(State.graphics.lcca);           // 7. LCCA (front)
 
-            // Store viewport dimensions
-            State.viewport.width = State.app.screen.width;
-            State.viewport.height = State.app.screen.height;
+            // Store viewport dimensions (use actual CSS pixels, not internal resolution)
+            State.viewport.width = State.app.canvas.clientWidth;
+            State.viewport.height = State.app.canvas.clientHeight;
 
             // Handle resize
             window.addEventListener('resize', onResize);
@@ -756,8 +756,9 @@
         }
 
         function onResize() {
-            State.viewport.width = State.app.screen.width;
-            State.viewport.height = State.app.screen.height;
+            // Use actual displayed pixel dimensions
+            State.viewport.width = State.app.canvas.clientWidth;
+            State.viewport.height = State.app.canvas.clientHeight;
         }
 
         // ------------------------------------------------------------
