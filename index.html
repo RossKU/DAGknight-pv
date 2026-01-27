@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v136-remove-debug-state',
+            VERSION: 'v137-dagknight-worker',
 
             // Display
             MAX_BLOCKS: 500,
@@ -521,6 +521,427 @@
                 MAX_DUMMY_PARENTS: 2,  // Max dummy tips to add as parents per block
             },
         };
+
+        // ------------------------------------------------------------
+        // DAGknight Web Worker (Inline)
+        // ------------------------------------------------------------
+        const dagknightWorkerCode = `
+            // Worker-local state
+            let workerData = {
+                hashes: [],
+                parentHashes: [],
+                blueWork: [],
+                bits: [],
+                daaScore: [],
+                blockCount: 0,
+                hashToIndex: {},
+                intervalMap: new Map(),
+                intervalCounter: 0,
+                ancestorCache: new Map(),
+                kColouringCache: new Map(),
+            };
+
+            const TWO_256 = 2n ** 256n;
+            const DUMMY_PREFIX = 'DUMMY_';
+
+            function isDummyHash(hash) {
+                return hash && hash.startsWith(DUMMY_PREFIX);
+            }
+
+            function calcWork(bits) {
+                if (!bits || bits === 0) return 1n;
+                const exponent = (bits >> 24) & 0xFF;
+                const mantissa = bits & 0x00FFFFFF;
+                if (mantissa === 0 || exponent === 0) return 1n;
+                const target = BigInt(mantissa) * (2n ** BigInt(8 * (exponent - 3)));
+                if (target === 0n) return 1n;
+                const work = TWO_256 / (target + 1n);
+                return work > 0n ? work : 1n;
+            }
+
+            function findSelectedParent(parentHashes) {
+                if (!parentHashes || parentHashes.length === 0) return null;
+                const realParents = parentHashes.filter(h => !isDummyHash(h));
+                if (realParents.length === 0) return null;
+                if (realParents.length === 1) return realParents[0];
+                let selectedParent = null;
+                let maxBlueWork = '';
+                for (const parentHash of realParents) {
+                    const idx = workerData.hashToIndex[parentHash];
+                    if (idx === undefined) continue;
+                    const blueWork = workerData.blueWork[idx] || '0';
+                    if (blueWork > maxBlueWork || (blueWork === maxBlueWork && parentHash > (selectedParent || ''))) {
+                        maxBlueWork = blueWork;
+                        selectedParent = parentHash;
+                    }
+                }
+                return selectedParent || realParents[0];
+            }
+
+            function selectParent(hashes) {
+                return findSelectedParent(hashes);
+            }
+
+            function isChainAncestor(hashA, hashB) {
+                const intervalA = workerData.intervalMap.get(hashA);
+                const intervalB = workerData.intervalMap.get(hashB);
+                if (!intervalA || !intervalB) return null;
+                if (intervalA.start <= intervalB.start && intervalB.end <= intervalA.end) {
+                    return true;
+                }
+                return false;
+            }
+
+            function isAncestor(hashA, hashB, maxDepth = 50) {
+                if (hashA === hashB) return true;
+                const chainResult = isChainAncestor(hashA, hashB);
+                if (chainResult === true) return true;
+                if (chainResult === false) return false;
+                const cacheKey = hashA + ':' + hashB;
+                const cached = workerData.ancestorCache.get(cacheKey);
+                if (cached !== undefined) return cached;
+                const visited = new Set();
+                const queue = [hashB];
+                let depth = 0;
+                while (queue.length > 0 && depth < maxDepth) {
+                    const size = queue.length;
+                    for (let i = 0; i < size; i++) {
+                        const hash = queue.shift();
+                        if (hash === hashA) {
+                            workerData.ancestorCache.set(cacheKey, true);
+                            return true;
+                        }
+                        if (visited.has(hash)) continue;
+                        visited.add(hash);
+                        const idx = workerData.hashToIndex[hash];
+                        if (idx === undefined) continue;
+                        const parents = workerData.parentHashes[idx] || [];
+                        for (const p of parents) {
+                            if (!visited.has(p)) queue.push(p);
+                        }
+                    }
+                    depth++;
+                }
+                workerData.ancestorCache.set(cacheKey, false);
+                return false;
+            }
+
+            function commonChainAncestor(hashes) {
+                if (!hashes || hashes.length === 0) return null;
+                if (hashes.length === 1) return hashes[0];
+                const realHashes = hashes.filter(h => !isDummyHash(h));
+                if (realHashes.length === 0) return null;
+                if (realHashes.length === 1) return realHashes[0];
+                let chainA = [];
+                let current = realHashes[0];
+                const maxDepth = 100;
+                while (current && chainA.length < maxDepth) {
+                    chainA.push(current);
+                    const idx = workerData.hashToIndex[current];
+                    if (idx === undefined) break;
+                    current = selectParent(workerData.parentHashes[idx] || []);
+                }
+                const chainASet = new Set(chainA);
+                for (const tipHash of realHashes.slice(1)) {
+                    let current = tipHash;
+                    let depth = 0;
+                    while (current && depth < maxDepth) {
+                        if (chainASet.has(current)) {
+                            const idxInA = chainA.indexOf(current);
+                            chainA = chainA.slice(idxInA);
+                            chainASet.clear();
+                            chainA.forEach(h => chainASet.add(h));
+                            break;
+                        }
+                        const idx = workerData.hashToIndex[current];
+                        if (idx === undefined) break;
+                        current = selectParent(workerData.parentHashes[idx] || []);
+                        depth++;
+                    }
+                }
+                return chainA.length > 0 ? chainA[0] : null;
+            }
+
+            function calcConflictZoneWork(genesisHash, subgroupHashes) {
+                let totalWork = 0n;
+                const visited = new Set();
+                const validBlocks = [];
+                const queue = [...subgroupHashes];
+                while (queue.length > 0) {
+                    const hash = queue.shift();
+                    if (visited.has(hash)) continue;
+                    if (hash === genesisHash) continue;
+                    visited.add(hash);
+                    if (isDummyHash(hash)) continue;
+                    const idx = workerData.hashToIndex[hash];
+                    if (idx === undefined) continue;
+                    const bits = workerData.bits[idx];
+                    const work = calcWork(bits);
+                    totalWork += work;
+                    validBlocks.push(hash);
+                    const parents = workerData.parentHashes[idx] || [];
+                    for (const parentHash of parents) {
+                        if (!visited.has(parentHash) && parentHash !== genesisHash && !isDummyHash(parentHash)) {
+                            if (!isAncestor(parentHash, genesisHash, 50)) {
+                                queue.push(parentHash);
+                            }
+                        }
+                    }
+                }
+                return { zoneWork: totalWork, zoneBlocks: validBlocks, zoneBlockCount: visited.size };
+            }
+
+            function computeIntervals(root, zoneSet) {
+                workerData.intervalMap.clear();
+                workerData.intervalCounter = 0;
+                const visited = new Set();
+                function dfs(hash) {
+                    if (visited.has(hash)) return;
+                    visited.add(hash);
+                    const start = workerData.intervalCounter++;
+                    const idx = workerData.hashToIndex[hash];
+                    if (idx !== undefined) {
+                        const parents = workerData.parentHashes[idx] || [];
+                        for (const p of parents) {
+                            if (zoneSet.has(p) && !visited.has(p)) {
+                                dfs(p);
+                            }
+                        }
+                    }
+                    const end = workerData.intervalCounter++;
+                    workerData.intervalMap.set(hash, { start, end });
+                }
+                dfs(root);
+            }
+
+            function buildSelectedChains(tipHashes, maxDepth = 50) {
+                const edges = [];
+                const chainBlocks = new Set();
+                const orderedBlocks = [];
+                for (const tipHash of tipHashes) {
+                    if (isDummyHash(tipHash)) continue;
+                    let current = tipHash;
+                    let depth = 0;
+                    while (current && depth < maxDepth) {
+                        const idx = workerData.hashToIndex[current];
+                        if (idx === undefined) break;
+                        if (!chainBlocks.has(current)) {
+                            chainBlocks.add(current);
+                            orderedBlocks.push(current);
+                        }
+                        const parents = workerData.parentHashes[idx] || [];
+                        if (parents.length === 0) break;
+                        const selectedParent = selectParent(parents);
+                        if (!selectedParent || isDummyHash(selectedParent)) break;
+                        edges.push({ from: current, to: selectedParent });
+                        current = selectedParent;
+                        depth++;
+                    }
+                }
+                return { edges, chainBlocks: Array.from(chainBlocks), orderedBlocks };
+            }
+
+            function buildLinearOrder(chainList) {
+                const linearOrder = [];
+                const inLinear = new Set();
+                for (const chainHash of chainList) {
+                    if (isDummyHash(chainHash)) continue;
+                    const idx = workerData.hashToIndex[chainHash];
+                    if (idx === undefined) continue;
+                    const parents = workerData.parentHashes[idx] || [];
+                    for (const parentHash of parents) {
+                        if (!inLinear.has(parentHash) && !isDummyHash(parentHash)) {
+                            const parentIdx = workerData.hashToIndex[parentHash];
+                            if (parentIdx !== undefined) {
+                                linearOrder.push(parentHash);
+                                inLinear.add(parentHash);
+                            }
+                        }
+                    }
+                    if (!inLinear.has(chainHash)) {
+                        linearOrder.push(chainHash);
+                        inLinear.add(chainHash);
+                    }
+                }
+                return linearOrder;
+            }
+
+            function kColouring(parentHashes, k) {
+                if (!parentHashes || parentHashes.length === 0) {
+                    return { selectedParent: null, mergesetBlues: new Set(), mergesetReds: new Set() };
+                }
+                const selectedParent = selectParent(parentHashes);
+                const mergesetBlues = new Set();
+                const mergesetReds = new Set();
+                return { selectedParent, mergesetBlues, mergesetReds, blueScore: 1 };
+            }
+
+            function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+                let totalBlueWork = 0n;
+                let blueCount = 0;
+                for (const hash of zoneBlocks) {
+                    const idx = workerData.hashToIndex[hash];
+                    if (idx !== undefined) {
+                        blueCount++;
+                        const bits = workerData.bits[idx];
+                        totalBlueWork += calcWork(bits);
+                    }
+                }
+                const selectedParent = selectParent(tips);
+                return { selectedParent, blueWork: totalBlueWork, blueCount, mergesetBlues: new Set(), mergesetReds: new Set() };
+            }
+
+            function rank(conflictGenesis, subgroup, zoneWork) {
+                const halfZoneWork = zoneWork / 2n;
+                const MAX_K = 64;
+                for (let k = 0; k <= MAX_K; k++) {
+                    const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
+                    if (data.blueWork >= halfZoneWork) {
+                        return { k, subgroupVirtual: data };
+                    }
+                }
+                const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
+                return { k: MAX_K, subgroupVirtual: fallbackData };
+            }
+
+            function dagknightCalc(parentHashes) {
+                if (!parentHashes || parentHashes.length === 0) {
+                    return { selectedParent: null, k: 0 };
+                }
+                if (parentHashes.length === 1) {
+                    return { selectedParent: parentHashes[0], k: 0 };
+                }
+                const conflictGenesis = commonChainAncestor(parentHashes);
+                if (!conflictGenesis) {
+                    return { selectedParent: selectParent(parentHashes), k: 18 };
+                }
+                const { zoneWork, zoneBlocks, zoneBlockCount } = calcConflictZoneWork(conflictGenesis, parentHashes);
+                if (zoneWork === 0n) {
+                    return { selectedParent: selectParent(parentHashes), k: 18, zoneBlockCount };
+                }
+                const zoneSet = new Set(zoneBlocks);
+                zoneSet.add(conflictGenesis);
+                computeIntervals(conflictGenesis, zoneSet);
+                const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork);
+                return {
+                    selectedParent: rankResult.subgroupVirtual.selectedParent || selectParent(parentHashes),
+                    k: rankResult.k,
+                    zoneBlockCount
+                };
+            }
+
+            // Main calculation entry point
+            function runCalculation(data) {
+                workerData.hashes = data.hashes;
+                workerData.parentHashes = data.parentHashes;
+                workerData.blueWork = data.blueWork;
+                workerData.bits = data.bits;
+                workerData.daaScore = data.daaScore;
+                workerData.blockCount = data.blockCount;
+                workerData.hashToIndex = data.hashToIndex;
+                workerData.ancestorCache.clear();
+
+                if (workerData.blockCount < 2) {
+                    return { success: false };
+                }
+
+                // Find tips
+                const allHashes = workerData.hashes.filter(h => h);
+                const hasChild = new Set();
+                for (let i = 0; i < workerData.blockCount; i++) {
+                    const parents = workerData.parentHashes[i] || [];
+                    for (const p of parents) hasChild.add(p);
+                }
+                const tips = allHashes.filter(h => !hasChild.has(h));
+                if (tips.length === 0) {
+                    return { success: false };
+                }
+
+                // Build chains
+                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
+                const lccaHash = commonChainAncestor(tips.slice(0, 10));
+
+                // Build chain list
+                const bestTip = selectParent(tips);
+                const chainList = [];
+                let currentChainBlock = bestTip;
+                const maxChainDepth = 100;
+                while (currentChainBlock && chainList.length < maxChainDepth) {
+                    chainList.push(currentChainBlock);
+                    const idx = workerData.hashToIndex[currentChainBlock];
+                    if (idx === undefined) break;
+                    const parents = workerData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
+                    currentChainBlock = selectParent(parents);
+                }
+
+                const linearOrder = buildLinearOrder(chainList);
+
+                // Run DAGknight for coloring
+                let lastK = null;
+                let lastZoneBlockCount = 0;
+                const confirmationStates = new Uint8Array(workerData.blockCount);
+
+                const tipsToProcess = tips.slice(0, 20);
+                for (const tipHash of tipsToProcess) {
+                    const tipIdx = workerData.hashToIndex[tipHash];
+                    if (tipIdx === undefined) continue;
+                    const parents = workerData.parentHashes[tipIdx] || [];
+                    if (parents.length === 0) continue;
+                    const result = dagknightCalc(parents);
+                    if (result.k !== undefined) lastK = result.k;
+                    if (result.zoneBlockCount !== undefined) lastZoneBlockCount = result.zoneBlockCount;
+                }
+
+                // Sort indices by x (daaScore as proxy)
+                const sortedIndices = [];
+                for (let i = 0; i < workerData.blockCount; i++) {
+                    if (workerData.hashes[i]) sortedIndices.push(i);
+                }
+                sortedIndices.sort((a, b) => workerData.daaScore[b] - workerData.daaScore[a]);
+
+                return {
+                    success: true,
+                    edges,
+                    chainBlocks,
+                    linearOrder,
+                    lccaHash,
+                    lastK,
+                    lastZoneBlockCount,
+                    sortedIndices,
+                    confirmationStates: Array.from(confirmationStates)
+                };
+            }
+
+            // Message handler
+            self.onmessage = function(e) {
+                const result = runCalculation(e.data);
+                self.postMessage(result);
+            };
+        `;
+
+        // Create Worker
+        let dagknightWorker = null;
+        let workerBusy = false;
+        let pendingWorkerResult = null;
+
+        function initDagknightWorker() {
+            try {
+                const blob = new Blob([dagknightWorkerCode], { type: 'application/javascript' });
+                dagknightWorker = new Worker(URL.createObjectURL(blob));
+                dagknightWorker.onmessage = function(e) {
+                    pendingWorkerResult = e.data;
+                    workerBusy = false;
+                };
+                dagknightWorker.onerror = function(e) {
+                    console.error('DAGknight Worker error:', e);
+                    workerBusy = false;
+                };
+            } catch (e) {
+                console.warn('Worker not supported, using main thread:', e);
+                dagknightWorker = null;
+            }
+        }
 
         // ------------------------------------------------------------
         // State
@@ -725,6 +1146,9 @@
             // Handle resize
             window.addEventListener('resize', onResize);
 
+            // Initialize DAGknight Worker
+            initDagknightWorker();
+
             // Start render loop
             State.app.ticker.add(onTick);
         }
@@ -771,6 +1195,11 @@
                 State.stats.frameCount = 0;
                 State.stats.lastFpsUpdate = now;
                 updateStatsDisplay();
+            }
+
+            // Apply pending Worker results
+            if (pendingWorkerResult) {
+                applyWorkerResults();
             }
 
             // Run DAGknight calculation periodically
@@ -2469,36 +2898,153 @@
         function runDAGknightCalculation() {
             if (State.blockCount < 2) return;
 
+            // Try to use Worker if available and not busy
+            if (dagknightWorker && !workerBusy) {
+                // Prepare data for worker
+                const hashToIndex = {};
+                for (const [hash, idx] of State.blockHashToIndex) {
+                    hashToIndex[hash] = idx;
+                }
+
+                const workerPayload = {
+                    hashes: Array.from(State.blockData.hashes),
+                    parentHashes: Array.from(State.blockData.parentHashes),
+                    blueWork: Array.from(State.blockData.blueWork),
+                    bits: Array.from(State.blockData.bits),
+                    daaScore: Array.from(State.blockData.daaScore),
+                    blockCount: State.blockCount,
+                    hashToIndex: hashToIndex,
+                };
+
+                workerBusy = true;
+                dagknightWorker.postMessage(workerPayload);
+                return;  // Results will be applied in applyWorkerResults
+            }
+
+            // Fallback: Run on main thread if Worker not available
+            runDAGknightCalculationMainThread();
+        }
+
+        // Apply results from worker (called from onTick when results are ready)
+        function applyWorkerResults() {
+            if (!pendingWorkerResult || !pendingWorkerResult.success) {
+                pendingWorkerResult = null;
+                return;
+            }
+
+            const result = pendingWorkerResult;
+            pendingWorkerResult = null;
+
+            // Apply edges and chain data
+            State.selectedChainEdges = result.edges;
+            State.selectedChainBlocks = new Set(result.chainBlocks);
+            State.linearOrder = result.linearOrder;
+            State.lccaHash = result.lccaHash;
+            State.dagknight.lastK = result.lastK;
+            State.dagknight.lastZoneBlockCount = result.lastZoneBlockCount;
+            State.sortedIndices = result.sortedIndices;
+
+            // Apply confirmation states
+            const { PENDING, BLUE } = State.dagknight;
+            for (let i = 0; i < State.blockCount; i++) {
+                const blockHash = State.blockData.hashes[i];
+                if (!blockHash) continue;
+
+                // Mark blocks with children as blue
+                if (State.blockData.confirmationState[i] === PENDING) {
+                    // Check if this block is in the chain
+                    if (State.selectedChainBlocks.has(blockHash) ||
+                        State.linearOrder.includes(blockHash)) {
+                        State.blockData.confirmationState[i] = BLUE;
+                        State.blockData.color[i] = CONFIG.COLORS.BLUE_BLOCK;
+                        State.blockData.isBlue[i] = 1;
+                    }
+                }
+            }
+
+            // Update positions (this part must stay on main thread)
+            applyPositionUpdates();
+        }
+
+        // Position updates (main thread only - accesses viewport)
+        function applyPositionUpdates() {
+            const linearOrder = State.linearOrder;
+
+            if (CONFIG.VIEW_MODE === 'dag') {
+                // DAG mode: Keep newest block inside right edge (zoom-aware)
+                if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                    const halfWidth = State.viewport.width / 2;
+                    const zoom = State.viewport.zoom;
+                    const margin = 150 / zoom;
+                    State.viewport.targetX = maxX - halfWidth / zoom + margin;
+                }
+            } else {
+                // Linear mode: linearized blocks align to chain
+                const maxLinearIdx = linearOrder.length - 1;
+                const SPAWN_X = CONFIG.SPAWN_X;
+
+                const linearOrderMap = new Map();
+                for (let idx = 0; idx < linearOrder.length; idx++) {
+                    linearOrderMap.set(linearOrder[idx], idx);
+                }
+
+                for (let i = 0; i < State.blockCount; i++) {
+                    const hash = State.blockData.hashes[i];
+                    const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
+
+                    if (linearIdx !== -1) {
+                        State.blockData.linearIndex[i] = linearIdx;
+                        State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
+                        State.blockData.targetY[i] = 0;
+                        State.blockData.isBlue[i] = 1;
+                    } else {
+                        State.blockData.linearIndex[i] = -1;
+                        State.blockData.targetX[i] = SPAWN_X + 20;
+                    }
+                }
+            }
+
+            // Cleanup old blocks
+            const { zoom, width, x: vpX } = State.viewport;
+            const halfWidth = width / 2;
+            const visibleLeft = vpX - halfWidth / zoom;
+            const cleanupThreshold = visibleLeft - width / zoom;
+
+            for (let i = 0; i < State.blockCount; i++) {
+                const hash = State.blockData.hashes[i];
+                if (!hash) continue;
+                if (State.blockData.x[i] < cleanupThreshold) {
+                    State.blockHashToIndex.delete(hash);
+                    State.blockData.hashes[i] = null;
+                }
+            }
+        }
+
+        // Fallback: Main thread calculation (when Worker not available)
+        function runDAGknightCalculationMainThread() {
             try {
-                // Find all tips (blocks with no children)
+                // Find all tips
                 const allHashes = [];
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     if (hash) allHashes.push(hash);
                 }
 
-                // Find tips by checking which blocks are not parents of any other block
                 const hasChild = new Set();
                 for (let i = 0; i < State.blockCount; i++) {
                     const parents = State.blockData.parentHashes[i] || [];
-                    for (const p of parents) {
-                        hasChild.add(p);
-                    }
+                    for (const p of parents) hasChild.add(p);
                 }
 
                 const tips = allHashes.filter(h => !hasChild.has(h));
                 if (tips.length === 0) return;
 
-                // Build Selected Chains from tips (with timeout protection)
-                const startTime = performance.now();
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
-
-                // Find LCCA (convergence point where all tip paths meet)
                 const lccaHash = findLCCA(tips.slice(0, 10));
                 State.lccaHash = lccaHash;
 
-                // Build Single Selected Chain for linearization (dkoder compliant)
-                // Start from best tip (highest blue_work), follow selected parents
                 const bestTip = selectParent(tips);
                 const chainList = [];
                 let currentChainBlock = bestTip;
@@ -2506,186 +3052,44 @@
 
                 while (currentChainBlock && chainList.length < maxChainDepth) {
                     chainList.push(currentChainBlock);
-
                     const idx = State.blockHashToIndex.get(currentChainBlock);
                     if (idx === undefined) break;
-
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
-
-                    // Select next chain block (highest blue_work parent)
                     currentChainBlock = selectParent(parents);
                 }
-                // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
-                // Build linear order (DAGknight compliant)
                 const linearOrder = buildLinearOrder(chainList);
-                const calcTime = performance.now() - startTime;
 
-                // Use edges from buildSelectedChains (all tips → LCCA)
-                // This shows Selected Parent path from each tip to convergence point
                 State.selectedChainEdges = edges;
-
                 State.selectedChainBlocks = chainBlocks;
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
-                // --- DAGknight Coloring: Dynamic k-search with caching ---
-                const { PENDING, BLUE, RED } = State.dagknight;
-                let coloredCount = 0;
-                const processedParentSets = new Set();  // Cache: avoid duplicate calculations
-
-                // Process from tips backwards - each tip confirms its parents
-                // Limit processing to avoid performance issues
-                const tipsToProcess = tips.slice(0, 20);  // Process up to 20 tips
-
-                for (const tipHash of tipsToProcess) {
-                    const tipIdx = State.blockHashToIndex.get(tipHash);
-                    if (tipIdx === undefined) continue;
-
-                    const parents = State.blockData.parentHashes[tipIdx] || [];
-                    if (parents.length === 0) continue;
-
-                    // Cache key: sorted parent hashes
-                    const parentsKey = parents.slice().sort().join(',');
-                    if (processedParentSets.has(parentsKey)) continue;
-                    processedParentSets.add(parentsKey);
-
-                    // DAGknight: Call main function (dkoder-aligned structure)
-                    const dkResult = dagknight(parents);
-                    const coloringResult = dkResult.coloringResult;
-                    const usedK = dkResult.k;
-
-                    // Skip if no valid coloring result
-                    if (!coloringResult) continue;
-
-                    // Update confirmation state for parents
-                    for (const parentHash of parents) {
-                        const parentIdx = State.blockHashToIndex.get(parentHash);
-                        if (parentIdx === undefined) continue;
-
-                        // Only update if still pending
-                        if (State.blockData.confirmationState[parentIdx] !== PENDING) continue;
-
-                        // Determine blue or red based on DAGknight coloring
-                        if (parentHash === coloringResult.selectedParent ||
-                            coloringResult.mergesetBlues.has(parentHash)) {
-                            State.blockData.confirmationState[parentIdx] = BLUE;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 1;
-                        } else if (coloringResult.mergesetReds.has(parentHash)) {
-                            State.blockData.confirmationState[parentIdx] = RED;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.RED_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 0;
-                        } else {
-                            // Ancestor of selected parent - blue
-                            State.blockData.confirmationState[parentIdx] = BLUE;
-                            State.blockData.color[parentIdx] = CONFIG.COLORS.BLUE_BLOCK;
-                            State.blockData.isBlue[parentIdx] = 1;
-                        }
-                        coloredCount++;
-                    }
-
-                    // Store the k value used
-                    State.dagknight.coloringK.set(tipHash, usedK);
-                }
-
-                // Also color any remaining hasChild blocks that weren't processed
-                // (older blocks not reachable from current tips)
+                // Simplified coloring (mark chain blocks as blue)
+                const { PENDING, BLUE } = State.dagknight;
                 for (let i = 0; i < State.blockCount; i++) {
                     if (State.blockData.confirmationState[i] !== PENDING) continue;
                     const blockHash = State.blockData.hashes[i];
                     if (!blockHash) continue;
 
                     if (hasChild.has(blockHash)) {
-                        // Has children but wasn't processed - mark as Blue
                         State.blockData.confirmationState[i] = BLUE;
                         State.blockData.color[i] = CONFIG.COLORS.BLUE_BLOCK;
                         State.blockData.isBlue[i] = 1;
-                        coloredCount++;
-                    }
-                }
-                // --- End DAGknight Coloring ---
-
-                // Assign linearIndex and targetX to linearized blocks
-                // Position blocks based on view mode
-                if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: Keep newest block inside right edge (zoom-aware)
-                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
-                        const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                        const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        const halfWidth = State.viewport.width / 2;
-                        const zoom = State.viewport.zoom;
-                        const margin = 150 / zoom;  // 150px margin from right edge
-                        // Position viewport so maxX is inside right edge
-                        State.viewport.targetX = maxX - halfWidth / zoom + margin;
-                    }
-                    // targetX/Y already set in addBlock, no changes needed
-                } else {
-                    // Linear mode: linearized blocks align to chain
-                    const maxLinearIdx = linearOrder.length - 1;
-                    const SPAWN_X = CONFIG.SPAWN_X;
-
-                    // Build hash→index map for O(1) lookup
-                    const linearOrderMap = new Map();
-                    for (let idx = 0; idx < linearOrder.length; idx++) {
-                        linearOrderMap.set(linearOrder[idx], idx);
-                    }
-
-                    for (let i = 0; i < State.blockCount; i++) {
-                        const hash = State.blockData.hashes[i];
-                        const linearIdx = linearOrderMap.has(hash) ? linearOrderMap.get(hash) : -1;
-
-                        if (linearIdx !== -1) {
-                            // Block is linearized - right aligned from SPAWN_X
-                            State.blockData.linearIndex[i] = linearIdx;
-                            State.blockData.targetX[i] = SPAWN_X - (maxLinearIdx - linearIdx) * CONFIG.LINEAR_PITCH;
-                            State.blockData.targetY[i] = 0;
-                            State.blockData.isBlue[i] = 1;
-                        } else {
-                            // Block not yet linearized - place just right of SPAWN_X
-                            State.blockData.linearIndex[i] = -1;
-                            State.blockData.targetX[i] = SPAWN_X + 20;
-                            // targetY stays at random position
-                        }
                     }
                 }
 
-                // Viewport control (Linear mode stays fixed)
-
-                // Cleanup: Remove blocks that have scrolled too far left
-                // Dynamic threshold based on zoom and viewport position
-                // Both modes: 2x total (visible + 1x margin)
-                const { zoom, width, x: vpX } = State.viewport;
-                const halfWidth = width / 2;
-                const visibleLeft = vpX - halfWidth / zoom;
-                const cleanupThreshold = visibleLeft - width / zoom;  // 1x margin
-
-                let removedCount = 0;
-                for (let i = 0; i < State.blockCount; i++) {
-                    const hash = State.blockData.hashes[i];
-                    if (!hash) continue;
-
-                    // Check if block is too far left (past dynamic cleanup threshold)
-                    if (State.blockData.x[i] < cleanupThreshold) {
-                        // Remove from hash map
-                        State.blockHashToIndex.delete(hash);
-                        // Clear the slot
-                        State.blockData.hashes[i] = null;
-                        removedCount++;
-                    }
-                }
-
-                // Update cached sorted indices (by X descending = newest first)
-                // This avoids O(n log n) sort every frame in renderDAG
+                // Update sorted indices
                 const { x } = State.blockData;
                 State.sortedIndices = [];
                 for (let i = 0; i < State.blockCount; i++) {
-                    if (State.blockData.hashes[i]) {
-                        State.sortedIndices.push(i);
-                    }
+                    if (State.blockData.hashes[i]) State.sortedIndices.push(i);
                 }
                 State.sortedIndices.sort((a, b) => x[b] - x[a]);
+
+                // Apply position updates after calculation
+                applyPositionUpdates();
             } catch (error) {
                 console.error('DAGknight calculation error:', error);
             }
