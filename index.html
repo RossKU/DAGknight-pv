@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v124-reduce-dom-updates',
+            VERSION: 'v125-pause-buffer',
 
             // Display
             MAX_BLOCKS: 500,
@@ -531,6 +531,9 @@
             rpcClient: null,
             isConnected: false,
             isPaused: false,
+            pauseStartTime: null,      // When pause started (for 5-sec timeout)
+            pauseBuffer: [],           // Blocks received during pause
+            pauseExpired: false,       // True if paused > 5 seconds
 
             // Block data (TypedArrays for performance)
             blockData: {
@@ -2976,10 +2979,17 @@
 
             // Subscribe to block added notifications
             State.rpcClient.addEventListener('block-added', async (event) => {
-                if (State.isPaused) return;
-
                 try {
                     const block = event.data.block;
+
+                    // During pause: buffer blocks (up to 5 seconds worth)
+                    if (State.isPaused) {
+                        if (!State.pauseExpired) {
+                            State.pauseBuffer.push(block);
+                        }
+                        return;
+                    }
+
                     // block-added event already contains full block info
                     addBlock(block);
 
@@ -3147,8 +3157,52 @@
             });
 
             DOM.btnPause.addEventListener('click', () => {
-                State.isPaused = !State.isPaused;
-                DOM.btnPause.textContent = State.isPaused ? 'Resume' : 'Pause';
+                if (!State.isPaused) {
+                    // --- PAUSE ---
+                    State.isPaused = true;
+                    State.pauseStartTime = Date.now();
+                    State.pauseBuffer = [];
+                    State.pauseExpired = false;
+                    DOM.btnPause.textContent = 'Resume (5s)';
+
+                    // Start countdown timer
+                    let remaining = 5;
+                    const countdownInterval = setInterval(() => {
+                        if (!State.isPaused) {
+                            clearInterval(countdownInterval);
+                            return;
+                        }
+                        remaining--;
+                        if (remaining > 0) {
+                            DOM.btnPause.textContent = `Resume (${remaining}s)`;
+                        } else {
+                            // 5 seconds expired
+                            State.pauseExpired = true;
+                            DOM.btnPause.textContent = 'Expired';
+                            DOM.btnPause.disabled = true;
+                            clearInterval(countdownInterval);
+                        }
+                    }, 1000);
+                } else {
+                    // --- RESUME ---
+                    if (State.pauseExpired) {
+                        // Cannot resume after 5 seconds - use Reset
+                        return;
+                    }
+
+                    // Process buffered blocks quickly
+                    const bufferedBlocks = State.pauseBuffer;
+                    State.pauseBuffer = [];
+                    State.isPaused = false;
+                    State.pauseStartTime = null;
+                    DOM.btnPause.textContent = 'Pause';
+
+                    // Add all buffered blocks
+                    for (const block of bufferedBlocks) {
+                        addBlock(block);
+                        generateDummyBlocks(block);
+                    }
+                }
             });
 
             DOM.btnReset.addEventListener('click', () => {
@@ -3160,6 +3214,24 @@
                 State.viewport.x = 0;
                 State.viewport.y = 0;
                 DOM.blockCount.textContent = '0';
+
+                // Reset pause state
+                State.isPaused = false;
+                State.pauseStartTime = null;
+                State.pauseBuffer = [];
+                State.pauseExpired = false;
+                DOM.btnPause.disabled = false;
+                DOM.btnPause.textContent = 'Pause';
+
+                // Reset DAG state
+                State.minDaaScore = null;
+                State.maxDaaScore = null;
+                State.dagColumnCount.clear();
+                State.selectedChainEdges = [];
+                State.selectedChainBlocks = new Set();
+                State.linearOrder = [];
+                State.lccaHash = null;
+                State.sortedIndices = [];
             });
 
             // Zoom with right edge as anchor point
