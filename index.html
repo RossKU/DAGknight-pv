@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v126-dag-pan-persist',
+            VERSION: 'v127-resize-viewport-fix',
 
             // Display
             MAX_BLOCKS: 500,
@@ -574,7 +574,8 @@
             viewport: {
                 x: 0,  // Center at origin
                 y: 0,
-                targetX: 0,  // Fixed camera (no scrolling needed)
+                targetX: 0,  // For smooth X animation
+                targetY: 0,  // For smooth Y animation
                 zoom: 1,
                 width: 0,
                 height: 0,
@@ -756,8 +757,28 @@
         }
 
         function onResize() {
-            State.viewport.width = State.app.screen.width;
-            State.viewport.height = State.app.screen.height;
+            const oldWidth = State.viewport.width;
+            const oldHeight = State.viewport.height;
+            const newWidth = State.app.screen.width;
+            const newHeight = State.app.screen.height;
+            const zoom = State.viewport.zoom;
+
+            // Adjust viewport to keep anchor points at same world position
+            // X: anchor at right edge (keeps newest blocks visible)
+            // Y: anchor at center (keeps Y=0 chain centered)
+            const oldHalfWidth = oldWidth / 2;
+            const newHalfWidth = newWidth / 2;
+            const oldHalfHeight = oldHeight / 2;
+            const newHalfHeight = newHeight / 2;
+
+            State.viewport.x += (oldHalfWidth - newHalfWidth) / zoom;
+            State.viewport.y += (oldHalfHeight - newHalfHeight) / zoom;
+            State.viewport.targetX = State.viewport.x;
+            State.viewport.targetY = State.viewport.y;
+
+            // Update stored dimensions
+            State.viewport.width = newWidth;
+            State.viewport.height = newHeight;
         }
 
         // ------------------------------------------------------------
