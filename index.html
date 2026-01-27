@@ -461,22 +461,9 @@
             font-weight: bold;
         }
 
-        /* Tutorial Overlay */
+        /* Tutorial Overlay - disabled */
         #tutorial-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 500;
-            display: none;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        #tutorial-overlay.visible {
-            display: block;
-            opacity: 1;
+            display: none !important;
         }
 
         /* Tutorial Modal */
@@ -803,6 +790,7 @@
             pauseBuffer: [],           // Blocks received during pause
             pauseExpired: false,       // True if paused > 5 seconds
             selectedBlockIndex: null,  // Selected block for info display (pause mode)
+            tutorialStep: -1,  // Current tutorial step (-1 = not in tutorial)
 
             // Block data (TypedArrays for performance)
             blockData: {
@@ -1205,14 +1193,14 @@
                 visibleCount++;
             }
 
-            // Draw Selected Chain edges FIRST (behind blocks)
-            // dkoder: Selected chain is determined by blueWork, known immediately even for tips
-            // Green = active area (LCCA to tips) - chain structure is known
-            // Blue = finalized area (before LCCA) - confirmed and stable
-            if (State.selectedChainEdges && State.selectedChainEdges.length > 0) {
-                const { targetX } = State.blockData;
+            // Draw Selected Chain edges
+            // Tutorial Step 4,5 (index 3,4): draw on top with arrows
+            // Normal: draw behind blocks
+            const isTutorialChainStep = State.tutorialStep === 3 || State.tutorialStep === 4;
 
-                // Get LCCA's targetX for comparison (stable, not animated)
+            if (!isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                // Normal mode: draw behind blocks
+                const { targetX } = State.blockData;
                 let lccaTargetX = -Infinity;
                 if (State.lccaHash) {
                     const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
@@ -1224,11 +1212,9 @@
                 let blueDrawn = false;
                 let greenDrawn = false;
 
-                // First pass: blue edges (at least one endpoint in finalized area)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
-
                     if (idx1 !== undefined && idx2 !== undefined) {
                         const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
                         if (!bothInActive) {
@@ -1246,11 +1232,9 @@
                     chainEdges.stroke({ width: 3, color: CONFIG.COLORS.BLUE_EDGE, alpha: 0.9 });
                 }
 
-                // Second pass: green edges (BOTH endpoints in active area - including tips)
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
-
                     if (idx1 !== undefined && idx2 !== undefined) {
                         const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
                         if (bothInActive) {
@@ -1304,6 +1288,41 @@
                     lcca.rect(selScreenX - selHalfSize, selScreenY - selHalfSize, selSize, selSize)
                         .fill({ color: 0xFFFFFF });
                 }
+            }
+
+            // Tutorial Step 4,5: Draw Selected Chain on TOP with arrows (child → parent)
+            if (isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                const arrowSize = 10 * zoom;
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);  // child
+                    const idx2 = State.blockHashToIndex.get(toHash);    // parent
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+
+                        // Skip if outside viewport
+                        if (screenX1 < -50 || screenX1 > width + 50 ||
+                            screenX2 < -50 || screenX2 > width + 50) continue;
+
+                        // Draw line
+                        lcca.moveTo(screenX1, screenY1);
+                        lcca.lineTo(screenX2, screenY2);
+
+                        // Draw arrow head at parent (toHash) end
+                        const angle = Math.atan2(screenY2 - screenY1, screenX2 - screenX1);
+                        const ax1 = screenX2 - arrowSize * Math.cos(angle - Math.PI / 6);
+                        const ay1 = screenY2 - arrowSize * Math.sin(angle - Math.PI / 6);
+                        const ax2 = screenX2 - arrowSize * Math.cos(angle + Math.PI / 6);
+                        const ay2 = screenY2 - arrowSize * Math.sin(angle + Math.PI / 6);
+                        lcca.moveTo(screenX2, screenY2);
+                        lcca.lineTo(ax1, ay1);
+                        lcca.moveTo(screenX2, screenY2);
+                        lcca.lineTo(ax2, ay2);
+                    }
+                }
+                lcca.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 1.0 });
             }
 
             // Update stats
@@ -3799,11 +3818,13 @@
                 this.wasPlaying = !State.isPaused;
                 DOM.tutorialOverlay.classList.add('visible');
                 DOM.tutorialModal.classList.add('visible');
+                State.tutorialStep = 0;
                 this.render();
             },
 
             close() {
                 this.isOpen = false;
+                State.tutorialStep = -1;
                 DOM.tutorialOverlay.classList.remove('visible');
                 DOM.tutorialModal.classList.remove('visible');
                 this.clearHighlight();
@@ -3833,6 +3854,7 @@
 
             render() {
                 const step = this.steps[this.currentStep];
+                State.tutorialStep = this.currentStep;
 
                 // Update step indicators
                 document.querySelectorAll('#tutorial-modal .step-dot').forEach((dot, i) => {
