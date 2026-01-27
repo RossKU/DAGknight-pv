@@ -539,6 +539,18 @@
             color: #00FF88;
             font-weight: 500;
         }
+        #tutorial-modal .content .highlight-gray {
+            color: #888888;
+            font-weight: 500;
+        }
+        #tutorial-modal .content .highlight-blue {
+            color: #4A90D9;
+            font-weight: 500;
+        }
+        #tutorial-modal .content .highlight-red {
+            color: #E74C3C;
+            font-weight: 500;
+        }
         #tutorial-modal .content .big-number {
             font-size: 32px;
             font-weight: bold;
@@ -3794,7 +3806,7 @@
                 // Step 2: Problem
                 {
                     title: 'But there\'s a problem.',
-                    content: '<p>When blocks are created this fast, multiple blocks are born at the same time.</p><p>They don\'t know about each other.</p>',
+                    content: '<p>When blocks are created this fast, multiple blocks are born at the same time.</p><p>They don\'t know about each other. If we sort them by parent-child...</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'linear') {
@@ -3821,14 +3833,14 @@
                 },
                 // Step 5: Block Colors (NEW)
                 {
-                    title: 'Block states: Gray → Blue or Red',
-                    content: '<p><strong>Gray</strong> = just arrived, pending.</p><p><strong>Blue</strong> = accepted into the chain.</p><p><strong>Red</strong> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
+                    title: 'Block states',
+                    content: '<p><span class="highlight-gray">⬜ Gray</span> = just arrived, pending.</p><p><span class="highlight-blue">🟦 Blue</span> = accepted into the chain.</p><p><span class="highlight-red">🟥 Red</span> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
                     highlight: 'legend',
                 },
                 // Step 6: Green line
                 {
                     title: 'The green line = chosen path.',
-                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
+                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">🟩 Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
                     highlight: null,
                 },
                 // Step 7: Gold = finalized
