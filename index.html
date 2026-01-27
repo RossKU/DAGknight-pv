@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v136-remove-debug-state',
+            VERSION: 'v138-perf-tuning',
 
             // Display
             MAX_BLOCKS: 500,
@@ -504,7 +504,7 @@
             },
 
             // Performance
-            UPDATE_INTERVAL: 250,  // ms (DAGknight calculation interval)
+            UPDATE_INTERVAL: 500,  // ms (DAGknight calculation interval)
             TARGET_FPS: 60,
 
             // Network
@@ -2655,11 +2655,11 @@
 
                 // Cleanup: Remove blocks that have scrolled too far left
                 // Dynamic threshold based on zoom and viewport position
-                // Both modes: 2x total (visible + 1x margin)
+                // Both modes: 1.2x total (visible + 0.2x margin)
                 const { zoom, width, x: vpX } = State.viewport;
                 const halfWidth = width / 2;
                 const visibleLeft = vpX - halfWidth / zoom;
-                const cleanupThreshold = visibleLeft - width / zoom;  // 1x margin
+                const cleanupThreshold = visibleLeft - width / zoom * 0.2;  // 0.2x margin
 
                 let removedCount = 0;
                 for (let i = 0; i < State.blockCount; i++) {
