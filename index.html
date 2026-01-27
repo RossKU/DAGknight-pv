@@ -1291,38 +1291,77 @@
             }
 
             // Tutorial Step 4,5: Draw Selected Chain on TOP with arrows (child → parent)
+            // Blue for finalized (before LCCA), Green for active (LCCA to tips)
             if (isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
+                const { targetX } = State.blockData;
                 const arrowSize = 10 * zoom;
-                for (const [fromHash, toHash] of State.selectedChainEdges) {
-                    const idx1 = State.blockHashToIndex.get(fromHash);  // child
-                    const idx2 = State.blockHashToIndex.get(toHash);    // parent
-                    if (idx1 !== undefined && idx2 !== undefined) {
-                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
-                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
-                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
-                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
 
-                        // Skip if outside viewport
-                        if (screenX1 < -50 || screenX1 > width + 50 ||
-                            screenX2 < -50 || screenX2 > width + 50) continue;
-
-                        // Draw line
-                        lcca.moveTo(screenX1, screenY1);
-                        lcca.lineTo(screenX2, screenY2);
-
-                        // Draw arrow head at parent (toHash) end
-                        const angle = Math.atan2(screenY2 - screenY1, screenX2 - screenX1);
-                        const ax1 = screenX2 - arrowSize * Math.cos(angle - Math.PI / 6);
-                        const ay1 = screenY2 - arrowSize * Math.sin(angle - Math.PI / 6);
-                        const ax2 = screenX2 - arrowSize * Math.cos(angle + Math.PI / 6);
-                        const ay2 = screenY2 - arrowSize * Math.sin(angle + Math.PI / 6);
-                        lcca.moveTo(screenX2, screenY2);
-                        lcca.lineTo(ax1, ay1);
-                        lcca.moveTo(screenX2, screenY2);
-                        lcca.lineTo(ax2, ay2);
+                // Get LCCA's targetX
+                let lccaTargetX = -Infinity;
+                if (State.lccaHash) {
+                    const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
+                    if (lccaIdx !== undefined) {
+                        lccaTargetX = targetX[lccaIdx];
                     }
                 }
-                lcca.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 1.0 });
+
+                // First pass: Blue edges (finalized - before LCCA)
+                let blueDrawn = false;
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        if (!bothInActive) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            if (screenX1 < -50 || screenX1 > width + 50 || screenX2 < -50 || screenX2 > width + 50) continue;
+
+                            lcca.moveTo(screenX1, screenY1);
+                            lcca.lineTo(screenX2, screenY2);
+                            const angle = Math.atan2(screenY2 - screenY1, screenX2 - screenX1);
+                            lcca.moveTo(screenX2, screenY2);
+                            lcca.lineTo(screenX2 - arrowSize * Math.cos(angle - Math.PI / 6), screenY2 - arrowSize * Math.sin(angle - Math.PI / 6));
+                            lcca.moveTo(screenX2, screenY2);
+                            lcca.lineTo(screenX2 - arrowSize * Math.cos(angle + Math.PI / 6), screenY2 - arrowSize * Math.sin(angle + Math.PI / 6));
+                            blueDrawn = true;
+                        }
+                    }
+                }
+                if (blueDrawn) {
+                    lcca.stroke({ width: 3, color: CONFIG.COLORS.BLUE_EDGE, alpha: 1.0 });
+                }
+
+                // Second pass: Green edges (active - LCCA to tips)
+                let greenDrawn = false;
+                for (const [fromHash, toHash] of State.selectedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        if (bothInActive) {
+                            const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                            const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                            const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                            const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                            if (screenX1 < -50 || screenX1 > width + 50 || screenX2 < -50 || screenX2 > width + 50) continue;
+
+                            lcca.moveTo(screenX1, screenY1);
+                            lcca.lineTo(screenX2, screenY2);
+                            const angle = Math.atan2(screenY2 - screenY1, screenX2 - screenX1);
+                            lcca.moveTo(screenX2, screenY2);
+                            lcca.lineTo(screenX2 - arrowSize * Math.cos(angle - Math.PI / 6), screenY2 - arrowSize * Math.sin(angle - Math.PI / 6));
+                            lcca.moveTo(screenX2, screenY2);
+                            lcca.lineTo(screenX2 - arrowSize * Math.cos(angle + Math.PI / 6), screenY2 - arrowSize * Math.sin(angle + Math.PI / 6));
+                            greenDrawn = true;
+                        }
+                    }
+                }
+                if (greenDrawn) {
+                    lcca.stroke({ width: 3, color: CONFIG.COLORS.SELECTED_CHAIN, alpha: 1.0 });
+                }
             }
 
             // Update stats
