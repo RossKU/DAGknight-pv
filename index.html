@@ -687,6 +687,8 @@
                 <div class="step-dot" data-step="5"></div>
                 <div class="step-dot" data-step="6"></div>
                 <div class="step-dot" data-step="7"></div>
+                <div class="step-dot" data-step="8"></div>
+                <div class="step-dot" data-step="9"></div>
             </div>
             <div class="content" id="tutorial-content">
                 <!-- Content injected by JS -->
@@ -3736,7 +3738,6 @@
                     content: '<p>But it\'s actually <strong>parallel branches</strong>.</p>',
                     highlight: null,
                     action: () => {
-                        // Ensure Linear mode
                         if (CONFIG.VIEW_MODE !== 'linear') {
                             DOM.btnViewLinear.click();
                         }
@@ -3748,31 +3749,42 @@
                     content: '<p>Deterministic ordering of parallel structures is considered difficult.</p><p>How did they solve it?</p>',
                     highlight: null,
                     action: () => {
-                        // Switch to DAG view
                         if (CONFIG.VIEW_MODE !== 'dag') {
                             DOM.btnViewDag.click();
                         }
                     }
                 },
-                // Step 4: Why parallel happens
+                // Step 4: Why parallel - timing mismatch
                 {
-                    title: 'Blocks are created before seeing each other.',
-                    content: '<p>Network delay creates parallel branches.</p><p>This is natural in a fast network.</p>',
+                    title: 'Why parallel? Timing mismatch.',
+                    content: '<p>Block creation (0.1 sec) is <strong>much faster</strong> than network propagation.</p><p>Blocks created almost simultaneously don\'t know about each other.</p>',
                     highlight: null,
                 },
-                // Step 5: LCCA explanation
+                // Step 5: Need deterministic ordering
                 {
-                    title: 'All blocks are included and ordered.',
-                    content: '<p><span class="highlight-gold">🟨 Gold</span> = Finalized point (LCCA)</p><p><span class="highlight-green">🟩 Green</span> = Selected chain path</p><p>Everything left of gold is <strong>permanent</strong>.</p>',
+                    title: 'Deterministic ordering is needed.',
+                    content: '<p>These parallel blocks must be ordered into a single chain.</p><p>Starting from tips, select the parent with highest trust (blue work).</p><p>This forms the <span class="highlight-green">green line</span> — the Selected Chain.</p>',
+                    highlight: null,
+                },
+                // Step 6: LCCA
+                {
+                    title: 'Where all paths meet: LCCA.',
+                    content: '<p>The point where all tips converge is called <strong>LCCA</strong>.</p><p>It\'s the most trusted common ancestor.</p><p><span class="highlight-gold">🟨 Gold block</span> = LCCA. Everything before it is <strong>finalized</strong>.</p>',
                     highlight: 'legend',
                 },
-                // Step 6: Linear view result
+                // Step 7: Linearization
+                {
+                    title: 'Ordering the conflict zone.',
+                    content: '<p>Between LCCA and tips, blocks compete.</p><p>They\'re ordered by inserting parallel blocks between chain blocks, sorted by work.</p><p>Result: a deterministic linear order.</p>',
+                    highlight: null,
+                },
+                // Step 8: Linear view result
                 {
                     title: 'See them line up.',
-                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>Parallel blocks become a single ordered sequence.</p>',
+                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>The parallel structure becomes a single ordered sequence.</p>',
                     highlight: 'view-mode-controls',
                 },
-                // Step 7: Conclusion
+                // Step 9: Conclusion
                 {
                     title: 'This is DAGknight.',
                     content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>. No trade-off.</p>',
