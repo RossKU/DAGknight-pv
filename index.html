@@ -3728,13 +3728,13 @@
                 {
                     title: 'A mathematically optimized blockchain.',
                     content: '<span class="big-number">10 blocks/sec</span><p>Live.</p>',
-                    highlight: null,
+                    highlight: ['canvas-container'],
                 },
                 // Step 2: Linear looks parallel
                 {
                     title: 'This chain looks linear...',
                     content: '<p>But it\'s actually <strong>parallel branches</strong>.</p>',
-                    highlight: null,
+                    highlight: ['canvas-container'],
                     action: () => {
                         // Ensure Linear mode
                         if (CONFIG.VIEW_MODE !== 'linear') {
@@ -3746,15 +3746,11 @@
                 {
                     title: 'Ordering parallel blocks is hard.',
                     content: '<p>Deterministic ordering of parallel structures is considered difficult.</p><p>How did they solve it?</p>',
-                    highlight: 'view-mode-controls',
+                    highlight: ['canvas-container'],
                     action: () => {
                         // Switch to DAG view
                         if (CONFIG.VIEW_MODE !== 'dag') {
                             DOM.btnViewDag.click();
-                        }
-                        // Pause to examine
-                        if (!State.isPaused) {
-                            DOM.btnPause.click();
                         }
                     }
                 },
@@ -3762,25 +3758,25 @@
                 {
                     title: 'Blocks are created before seeing each other.',
                     content: '<p>Network delay creates parallel branches.</p><p>This is natural in a fast network.</p>',
-                    highlight: null,
+                    highlight: ['canvas-container'],
                 },
                 // Step 5: LCCA explanation
                 {
                     title: 'All blocks are included and ordered.',
                     content: '<p><span class="highlight-gold">🟨 Gold</span> = Finalized point (LCCA)</p><p><span class="highlight-green">🟩 Green</span> = Selected chain path</p><p>Everything left of gold is <strong>permanent</strong>.</p>',
-                    highlight: 'legend',
+                    highlight: ['canvas-container', 'legend'],
                 },
                 // Step 6: Linear view result
                 {
                     title: 'See them line up.',
                     content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>Parallel blocks become a single ordered sequence.</p>',
-                    highlight: 'view-mode-controls',
+                    highlight: ['canvas-container', 'view-mode-controls'],
                 },
                 // Step 7: Conclusion
                 {
                     title: 'This is DAGknight.',
                     content: '<p>Kaspa\'s consensus algorithm.</p><p><strong>Fast</strong> and <strong>secure</strong>. No trade-off.</p>',
-                    highlight: null,
+                    highlight: ['canvas-container'],
                     final: true,
                 }
             ],
@@ -3870,12 +3866,15 @@
                     step.action();
                 }
 
-                // Apply highlight
+                // Apply highlight (supports array)
                 this.clearHighlight();
                 if (step.highlight) {
-                    const el = document.getElementById(step.highlight);
-                    if (el) {
-                        el.classList.add('tutorial-spotlight');
+                    const highlights = Array.isArray(step.highlight) ? step.highlight : [step.highlight];
+                    for (const id of highlights) {
+                        const el = document.getElementById(id);
+                        if (el) {
+                            el.classList.add('tutorial-spotlight');
+                        }
                     }
                 }
             },
