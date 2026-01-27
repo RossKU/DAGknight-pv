@@ -676,6 +676,7 @@
                 <div class="step-dot" data-step="7"></div>
                 <div class="step-dot" data-step="8"></div>
                 <div class="step-dot" data-step="9"></div>
+                <div class="step-dot" data-step="10"></div>
             </div>
             <div class="content" id="tutorial-content">
                 <!-- Content injected by JS -->
@@ -1194,9 +1195,9 @@
             }
 
             // Draw Selected Chain edges
-            // Tutorial Step 4,5 (index 3,4): draw on top with arrows
+            // Tutorial Step 4,6 (index 3,5): draw on top with arrows
             // Normal: draw behind blocks
-            const isTutorialChainStep = State.tutorialStep === 3 || State.tutorialStep === 4;
+            const isTutorialChainStep = State.tutorialStep === 3 || State.tutorialStep === 5;
 
             if (!isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 // Normal mode: draw behind blocks
@@ -1290,7 +1291,7 @@
                 }
             }
 
-            // Tutorial Step 4,5: Draw Selected Chain on TOP with arrows (child → parent)
+            // Tutorial Step 4,6 (index 3,5): Draw Selected Chain on TOP with arrows (child → parent)
             // Blue for finalized (before LCCA), Green for active (LCCA to tips)
             if (isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 const { targetX } = State.blockData;
@@ -3787,7 +3788,7 @@
                 // Step 1: Hook
                 {
                     title: '10 blocks per second.',
-                    content: '<p>This blockchain creates blocks <strong>600x faster</strong> than Bitcoin.</p><p>You\'re watching it live.</p>',
+                    content: '<p>This blockchain creates blocks <strong>6000x faster</strong> than Bitcoin.</p><p>You\'re watching it live.</p>',
                     highlight: null,
                 },
                 // Step 2: Problem
@@ -3803,7 +3804,7 @@
                 },
                 // Step 3: Show DAG
                 {
-                    title: 'Look. There are branches.',
+                    title: 'Look. They\'re parallel.',
                     content: '<p>See the parallel structure?</p><p>Which one is the "correct" chain?</p>',
                     highlight: null,
                     action: () => {
@@ -3814,35 +3815,46 @@
                 },
                 // Step 4: Answer
                 {
-                    title: 'The answer: include everything.',
-                    content: '<p>Don\'t throw away any blocks.</p><p>But decide the <strong>order</strong>.</p>',
+                    title: 'The answer: first, include everything.',
+                    content: '<p>Don\'t throw away any blocks.</p><p>Decide the <strong>order</strong> later.</p>',
                     highlight: null,
                 },
-                // Step 5: Green line
+                // Step 5: Block Colors (NEW)
                 {
-                    title: 'The green line = chosen path.',
-                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">Selected Chain</span>.</p>',
-                    highlight: null,
-                },
-                // Step 6: Gold = finalized
-                {
-                    title: 'Gold = finalized.',
-                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all paths agree.</p><p>Everything to the left of it is <strong>permanent</strong>. It won\'t change.</p>',
+                    title: 'Block states: Gray → Blue or Red',
+                    content: '<p><strong>Gray</strong> = just arrived, pending.</p><p><strong>Blue</strong> = accepted into the chain.</p><p><strong>Red</strong> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
                     highlight: 'legend',
                 },
-                // Step 7: Linearization
+                // Step 6: Green line
                 {
-                    title: 'Making it a single line.',
-                    content: '<p>In the finalized area, blocks are arranged into one sequence.</p><p>The green line is the backbone. Other blocks are inserted between, sorted by weight.</p>',
+                    title: 'The green line = chosen path.',
+                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
                     highlight: null,
                 },
-                // Step 8: Result
+                // Step 7: Gold = finalized
+                {
+                    title: 'Gold = finalized.',
+                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths agree.</p><p>Left of it = <strong>permanent</strong> (blue line).</p><p>Right of it = still changing.</p>',
+                    highlight: 'legend',
+                },
+                // Step 8: Linearization
+                {
+                    title: 'Making it a single line.',
+                    content: '<p>The thick line and large blocks form the backbone.</p><p>Each large block places smaller blocks to its left. Blocks fill gaps in order of trust.</p>',
+                    highlight: null,
+                },
+                // Step 9: Result
                 {
                     title: 'See them line up.',
                     content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>All those parallel blocks → one ordered sequence.</p>',
                     highlight: 'view-mode-controls',
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'linear') {
+                            DOM.btnViewLinear.click();
+                        }
+                    }
                 },
-                // Step 9: Conclusion
+                // Step 10: Conclusion
                 {
                     title: 'This is DAGknight.',
                     content: '<p>Fast <strong>and</strong> secure.</p><p>No trade-off.</p>',
