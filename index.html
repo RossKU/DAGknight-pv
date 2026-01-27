@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v132-dag-resize-recalc',
+            VERSION: 'v133-viewport-debug',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3144,6 +3144,26 @@
                     lines.push(lineDummy);
                 } else {
                     lines.push(`[DUMMY] OFF`);
+                }
+
+                // Viewport debug info
+                const canvasW = State.app?.canvas?.clientWidth ?? 0;
+                const canvasH = State.app?.canvas?.clientHeight ?? 0;
+                const vpW = State.viewport.width;
+                const vpH = State.viewport.height;
+                const vpX = State.viewport.x.toFixed(0);
+                const vpTX = State.viewport.targetX.toFixed(0);
+                const zoom = State.viewport.zoom.toFixed(2);
+                lines.push(`[VP] canvas:${canvasW}x${canvasH} vp:${vpW}x${vpH}`);
+                lines.push(`[VP] x:${vpX} tX:${vpTX} zoom:${zoom}`);
+
+                // DAG position info
+                if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxCol = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const maxX = maxCol * CONFIG.DAA_COLUMN_WIDTH;
+                    const halfW = vpW / 2;
+                    const correctVpX = (maxX - halfW / State.viewport.zoom + 80 / State.viewport.zoom).toFixed(0);
+                    lines.push(`[DAG] maxX:${maxX} halfW:${halfW.toFixed(0)} correctX:${correctVpX}`);
                 }
 
                 DOM.debugInfo.innerHTML = lines.join('<br>');
