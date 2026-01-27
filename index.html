@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v133-viewport-debug',
+            VERSION: 'v134-resize-raf',
 
             // Display
             MAX_BLOCKS: 500,
@@ -756,28 +756,31 @@
         }
 
         function onResize() {
-            const newWidth = State.app.canvas.clientWidth;
-            const newHeight = State.app.canvas.clientHeight;
+            // Delay execution to ensure canvas size is actually updated
+            requestAnimationFrame(() => {
+                const newWidth = State.app.canvas.clientWidth;
+                const newHeight = State.app.canvas.clientHeight;
 
-            // Skip if no change
-            if (State.viewport.width === newWidth && State.viewport.height === newHeight) return;
+                // Skip if no change
+                if (State.viewport.width === newWidth && State.viewport.height === newHeight) return;
 
-            // Update stored dimensions first
-            State.viewport.width = newWidth;
-            State.viewport.height = newHeight;
+                // Update stored dimensions first
+                State.viewport.width = newWidth;
+                State.viewport.height = newHeight;
 
-            const zoom = State.viewport.zoom;
-            const newHalfWidth = newWidth / 2;
+                const zoom = State.viewport.zoom;
+                const newHalfWidth = newWidth / 2;
 
-            // DAG mode: recalculate X from scratch (tip at right edge)
-            if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
-                const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                const margin = 80 / zoom;
-                State.viewport.x = maxX - newHalfWidth / zoom + margin;
-                State.viewport.targetX = State.viewport.x;
-            }
-            // Linear mode: keep viewport at 0
+                // DAG mode: recalculate X from scratch (tip at right edge)
+                if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                    const margin = 80 / zoom;
+                    State.viewport.x = maxX - newHalfWidth / zoom + margin;
+                    State.viewport.targetX = State.viewport.x;
+                }
+                // Linear mode: keep viewport at 0
+            });
         }
 
         // ------------------------------------------------------------
