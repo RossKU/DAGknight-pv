@@ -3196,7 +3196,7 @@
                 const idx = State.selectedBlockIndex;
                 if (idx === null || !State.blockData.hashes[idx]) return;
                 const hash = State.blockData.hashes[idx];
-                window.open(`https://kaspa.stream/block/${hash}`, '_blank');
+                window.open(`https://kaspa.stream/blocks/${hash}`, '_blank');
             });
 
             // Zoom with right edge as anchor point
