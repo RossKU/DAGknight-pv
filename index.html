@@ -473,7 +473,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v131-resize-viewport-fix',
+            VERSION: 'v132-dag-resize-recalc',
 
             // Display
             MAX_BLOCKS: 500,
@@ -756,31 +756,28 @@
         }
 
         function onResize() {
-            // Get old and new dimensions
-            const oldWidth = State.viewport.width;
-            const oldHeight = State.viewport.height;
             const newWidth = State.app.canvas.clientWidth;
             const newHeight = State.app.canvas.clientHeight;
 
             // Skip if no change
-            if (oldWidth === newWidth && oldHeight === newHeight) return;
+            if (State.viewport.width === newWidth && State.viewport.height === newHeight) return;
 
-            const zoom = State.viewport.zoom;
-
-            // Adjust viewport to keep right edge at same world position
-            // This prevents origin from shifting on resize
-            const oldHalfWidth = oldWidth / 2;
-            const newHalfWidth = newWidth / 2;
-            const oldHalfHeight = oldHeight / 2;
-            const newHalfHeight = newHeight / 2;
-
-            State.viewport.x += (oldHalfWidth - newHalfWidth) / zoom;
-            State.viewport.y += (oldHalfHeight - newHalfHeight) / zoom;
-            State.viewport.targetX = State.viewport.x;
-
-            // Update stored dimensions
+            // Update stored dimensions first
             State.viewport.width = newWidth;
             State.viewport.height = newHeight;
+
+            const zoom = State.viewport.zoom;
+            const newHalfWidth = newWidth / 2;
+
+            // DAG mode: recalculate X from scratch (tip at right edge)
+            if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
+                const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                const margin = 80 / zoom;
+                State.viewport.x = maxX - newHalfWidth / zoom + margin;
+                State.viewport.targetX = State.viewport.x;
+            }
+            // Linear mode: keep viewport at 0
         }
 
         // ------------------------------------------------------------
