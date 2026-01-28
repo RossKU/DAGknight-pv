@@ -812,7 +812,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v152-daa-edge',
+            VERSION: 'v153-dummy-tips',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2963,7 +2963,27 @@
                     }
                 }
 
-                const tips = allHashes.filter(h => !hasChild.has(h));
+                let tips = allHashes.filter(h => !hasChild.has(h));
+
+                // Also include dummyTips that haven't been selected as parents yet
+                // These are "virtual tips" for high BPS simulation
+                if (CONFIG.DUMMY.ENABLED && State.dummyTips.size > 0) {
+                    for (const dummyHash of State.dummyTips.keys()) {
+                        if (!tips.includes(dummyHash) && !hasChild.has(dummyHash)) {
+                            tips.push(dummyHash);
+                        }
+                    }
+                }
+
+                // DEBUG: Count real vs dummy tips
+                const realTips = tips.filter(h => !isDummyHash(h));
+                const dummyTipsCount = tips.filter(h => isDummyHash(h));
+                State.debugTipsInfo = {
+                    total: tips.length,
+                    real: realTips.length,
+                    dummy: dummyTipsCount.length,
+                };
+
                 if (tips.length === 0) return;
 
                 // Build Selected Chains from tips (with timeout protection)
@@ -3257,14 +3277,25 @@
             // Phase 3: Add dummy tips as additional parents (high BPS simulation)
             // Dynamic limit: MULTIPLIER * 2 to balance generation/consumption rate
             // 2x: 2 parents, 3x: 4 parents, 10x: 18 parents
+            // DAA distance requirement: dummy must be at least 4 DAA behind current block
             if (CONFIG.DUMMY.ENABLED && State.dummyTips.size > 0) {
                 const dummyParentsToAdd = [];
                 let addedCount = 0;
                 const dynamicLimit = CONFIG.DUMMY.MULTIPLIER * 2;
+                const minDaaDist = 4;  // Minimum DAA distance for dummy parent
 
                 for (const [dummyHash, selectCount] of State.dummyTips) {
                     // Limit dummy parents per block (dynamic based on multiplier)
                     if (addedCount >= dynamicLimit) break;
+
+                    // Check DAA distance - dummy must be old enough
+                    const dummyIdx = State.blockHashToIndex.get(dummyHash);
+                    if (dummyIdx !== undefined) {
+                        const dummyDaa = State.blockData.daaScore[dummyIdx];
+                        if (daaScore - dummyDaa < minDaaDist) {
+                            continue;  // Skip - dummy is too recent
+                        }
+                    }
 
                     // Add dummy as parent
                     dummyParentsToAdd.push(dummyHash);
@@ -3460,6 +3491,13 @@
                 // Dummy status
                 if (CONFIG.DUMMY.ENABLED) {
                     lines.push(`[DUMMY] ${1 + CONFIG.DUMMY.MULTIPLIER}x BPS`);
+                    lines.push(`dummyTips: ${State.dummyTips?.size ?? 0}`);
+                }
+
+                // Tips breakdown (real vs dummy)
+                if (State.debugTipsInfo) {
+                    const t = State.debugTipsInfo;
+                    lines.push(`Tips: ${t.total} (R:${t.real} D:${t.dummy})`);
                 }
 
                 // Viewport debug (temporary)
