@@ -614,6 +614,53 @@
             border-radius: 8px;
             z-index: 502 !important;
         }
+
+        /* Responsive: Portrait / Narrow screens */
+        @media (max-width: 600px) {
+            /* Top: Keep Network State, hide Debug State */
+            #stats {
+                display: none;
+            }
+
+            /* Bottom: Hide Legend (Block Type) to avoid collision with controls */
+            #legend {
+                display: none;
+            }
+
+            /* Adjust tutorial button position for narrow screens */
+            #tutorial-btn {
+                bottom: 160px;
+                right: 8px;
+            }
+
+            /* Compact controls */
+            #controls {
+                right: 8px;
+                gap: 4px;
+            }
+            #controls button {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+
+            #dummy-controls, #view-mode-controls {
+                right: 8px;
+                padding: 6px 8px;
+            }
+        }
+
+        /* Very narrow screens (< 400px) */
+        @media (max-width: 400px) {
+            #status {
+                left: 8px;
+                min-width: 150px;
+                font-size: 11px;
+                padding: 8px 12px;
+            }
+            #status .title {
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -748,7 +795,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v149-edge-limit',
+            VERSION: 'v150-responsive',
 
             // Display
             MAX_BLOCKS: 500,
