@@ -2988,10 +2988,10 @@
 
                 // Build Selected Chains from tips (with timeout protection)
                 const startTime = performance.now();
-                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 10));
+                const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
 
                 // Find LCCA (convergence point where all tip paths meet)
-                const lccaHash = findLCCA(tips.slice(0, 10));
+                const lccaHash = findLCCA(tips.slice(0, 50));
                 State.lccaHash = lccaHash;
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
@@ -3034,7 +3034,7 @@
 
                 // Process from tips backwards - each tip confirms its parents
                 // Limit processing to avoid performance issues
-                const tipsToProcess = tips.slice(0, 20);  // Process up to 20 tips
+                const tipsToProcess = tips.slice(0, 50);  // Process up to 50 tips
 
                 for (const tipHash of tipsToProcess) {
                     const tipIdx = State.blockHashToIndex.get(tipHash);
