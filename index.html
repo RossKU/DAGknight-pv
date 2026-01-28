@@ -1207,9 +1207,9 @@
             }
 
             // Draw Selected Chain edges
-            // Tutorial Step 4,6 (index 3,5): draw on top with arrows
+            // Tutorial Step 6,7 (index 5,6): draw on top with arrows
             // Normal: draw behind blocks
-            const isTutorialChainStep = State.tutorialStep === 3 || State.tutorialStep === 5;
+            const isTutorialChainStep = State.tutorialStep === 5 || State.tutorialStep === 6;
 
             if (!isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 // Normal mode: draw behind blocks
@@ -1303,7 +1303,7 @@
                 }
             }
 
-            // Tutorial Step 4,6 (index 3,5): Draw Selected Chain on TOP with arrows (child → parent)
+            // Tutorial Step 6,7 (index 5,6): Draw Selected Chain on TOP with arrows (child → parent)
             // Blue for finalized (before LCCA), Green for active (LCCA to tips)
             if (isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 const { targetX } = State.blockData;
@@ -3817,7 +3817,7 @@
                 // Step 3: Show DAG
                 {
                     title: 'Look. They\'re parallel.',
-                    content: '<p>See the parallel structure?</p><p>Which one is the "correct" chain?</p>',
+                    content: '<p>See the parallel structure?</p><p>Which is the correct <strong>order</strong>?</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') {
@@ -3830,30 +3830,45 @@
                     title: 'The answer: first, include everything.',
                     content: '<p>Don\'t throw away any blocks.</p><p>Decide the <strong>order</strong> later.</p>',
                     highlight: null,
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
+                    }
                 },
-                // Step 5: Block Colors (NEW)
+                // Step 5: Block Colors
                 {
                     title: 'Block states',
                     content: '<p><span class="highlight-gray">⬜ Gray</span> = just arrived, pending.</p><p><span class="highlight-blue">🟦 Blue</span> = accepted into the chain.</p><p><span class="highlight-red">🟥 Red</span> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
                     highlight: 'legend',
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
+                    }
                 },
                 // Step 6: Green line
                 {
                     title: 'The green line = chosen path.',
-                    content: '<p>Follow the "heaviest" route — the one with most work.</p><p>This is the <span class="highlight-green">🟩 Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
+                    content: '<p>From gray blocks, follow the "heaviest" route — most work.</p><p>This is the <span class="highlight-green">🟩 Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
                     highlight: null,
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
+                    }
                 },
                 // Step 7: Gold = finalized
                 {
                     title: 'Gold = finalized.',
                     content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths agree.</p><p>Left of it = <strong>permanent</strong> (blue line).</p><p>Right of it = still changing.</p>',
                     highlight: 'legend',
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
+                    }
                 },
                 // Step 8: Linearization
                 {
                     title: 'Making it a single line.',
                     content: '<p>The thick line and large blocks form the backbone.</p><p>Each large block places smaller blocks to its left. Blocks fill gaps in order of trust.</p>',
                     highlight: null,
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
+                    }
                 },
                 // Step 9: Result
                 {
@@ -3942,17 +3957,6 @@
                 if (step.final) {
                     DOM.tutorialNext.textContent = 'Close';
                     DOM.tutorialNext.className = 'btn btn-primary';
-                    // Add share button
-                    DOM.tutorialContent.innerHTML += `
-                        <button class="btn btn-share" id="tutorial-share" style="margin-top: 16px; width: 100%;">
-                            Share on X
-                        </button>
-                    `;
-                    document.getElementById('tutorial-share').addEventListener('click', () => {
-                        const text = 'Kaspa processes 10 blocks/sec and still converges to a single chain. See it live:';
-                        const url = window.location.href;
-                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
-                    });
                 } else {
                     DOM.tutorialNext.textContent = 'Next →';
                     DOM.tutorialNext.className = 'btn btn-primary';
