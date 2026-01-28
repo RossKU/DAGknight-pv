@@ -843,7 +843,7 @@
             },
 
             // Performance
-            UPDATE_INTERVAL: 2000,  // ms (DAGknight calculation interval - 2 seconds)
+            UPDATE_INTERVAL: 500,  // ms (DAGknight calculation interval for normal mode)
             TARGET_FPS: 60,
 
             // Network
@@ -1135,7 +1135,9 @@
             }
 
             // Run DAGknight calculation periodically
-            if (now - State.lastDagknightCalc >= CONFIG.UPDATE_INTERVAL) {
+            // Use longer interval for high BPS mode to reduce load
+            const calcInterval = CONFIG.DUMMY.ENABLED ? 2000 : CONFIG.UPDATE_INTERVAL;
+            if (now - State.lastDagknightCalc >= calcInterval) {
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
             }
