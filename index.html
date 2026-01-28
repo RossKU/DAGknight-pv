@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v159',
+            VERSION: 'v160',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3458,9 +3458,14 @@
             DOM.infoBlueScore.textContent = blueScore.toLocaleString();
             DOM.infoBlueWork.textContent = blueWork;
 
-            // Enable link to kaspa.stream
-            DOM.blockInfo.classList.add('clickable');
-            DOM.infoHint.textContent = 'Tap to view on kaspa.stream';
+            // Enable link to kaspa.stream (only for real blocks)
+            if (isDummyHash(hash)) {
+                DOM.blockInfo.classList.remove('clickable');
+                DOM.infoHint.textContent = '';  // No hint for dummy blocks
+            } else {
+                DOM.blockInfo.classList.add('clickable');
+                DOM.infoHint.textContent = 'Tap to view on kaspa.stream';
+            }
         }
 
         function updateStatsDisplay() {
@@ -3640,11 +3645,12 @@
                 State.sortedIndices = [];
             });
 
-            // Block info panel click -> open kaspa.stream
+            // Block info panel click -> open kaspa.stream (only for real blocks)
             DOM.blockInfo.addEventListener('click', () => {
                 const idx = State.selectedBlockIndex;
                 if (idx === null || !State.blockData.hashes[idx]) return;
                 const hash = State.blockData.hashes[idx];
+                if (isDummyHash(hash)) return;  // Don't open for dummy blocks
                 window.open(`https://kaspa.stream/blocks/${hash}`, '_blank');
             });
 
