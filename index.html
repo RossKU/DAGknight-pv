@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v161',
+            VERSION: 'v162',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3569,6 +3569,9 @@
                     State.pauseExpired = false;
                     State.selectedBlockIndex = null;
                     DOM.btnPause.textContent = 'Resume (5s)';
+
+                    // Run DAGknight calculation once to connect tips
+                    runDAGknightCalculation();
                     DOM.blockInfo.classList.add('visible');
                     updateBlockInfo();
 
