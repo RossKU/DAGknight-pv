@@ -3863,7 +3863,7 @@
                 // Step 8: Linearization
                 {
                     title: 'Making it a single line.',
-                    content: '<p>The thick line and large blocks form the backbone.</p><p>Each large block places smaller blocks to its left. Blocks fill gaps in order of trust.</p>',
+                    content: '<p><span class="highlight-green">🟩 Green zone</span>: the most trusted path is <strong>temporarily</strong> chosen as backbone.</p><p><span class="highlight-blue">🟦 Blue zone</span>: it\'s <strong>permanent</strong>.</p><p>Large blocks place smaller ones to their left, filling gaps by trust.</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
