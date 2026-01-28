@@ -748,7 +748,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v146-tutorial',
+            VERSION: 'v148-dummy-dag',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1446,17 +1446,43 @@
                 State.blockHashToIndex.set(dummyHash, index);
                 State.blockData.daaScore[index] = originalDaaScore;
 
-                // X = same spawn area with slight offset
-                const tipOffset = 10 + Math.random() * 30;
-                State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
-
-                // Y = spread vertically (scaled for high BPS: 30BPS=1.5x, 100BPS=2x)
+                // Position based on view mode (same logic as addBlock)
                 const yScale = CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0;
-                const randomY = (Math.random() - 0.5) * 300 * yScale;
-                State.blockData.y[index] = randomY;
-                State.blockData.targetY[index] = randomY;
+                if (CONFIG.VIEW_MODE === 'dag') {
+                    // DAG mode: X based on column (DAA grouped), Y based on order in column
+                    const column = Math.floor((originalDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const columnX = column * CONFIG.DAA_COLUMN_WIDTH;
 
-                State.blockData.targetX[index] = State.blockData.x[index];
+                    // Get block index within column for Y positioning
+                    const columnKey = column;
+                    const blockIndexInColumn = State.dagColumnCount.get(columnKey) || 0;
+                    State.dagColumnCount.set(columnKey, blockIndexInColumn + 1);
+
+                    // Calculate Y: 0, +20, -20, +40, -40, ... (scaled for high BPS)
+                    let blockY;
+                    if (blockIndexInColumn === 0) {
+                        blockY = 0;
+                    } else {
+                        const offset = Math.ceil(blockIndexInColumn / 2) * CONFIG.Y_STEP * yScale;
+                        const direction = (blockIndexInColumn % 2 === 1) ? 1 : -1;
+                        blockY = offset * direction;
+                    }
+
+                    State.blockData.x[index] = columnX;
+                    State.blockData.targetX[index] = columnX;
+                    State.blockData.y[index] = blockY;
+                    State.blockData.targetY[index] = blockY;
+                } else {
+                    // Linear mode: X at spawn area with slight offset
+                    const tipOffset = 10 + Math.random() * 30;
+                    State.blockData.x[index] = CONFIG.SPAWN_X + tipOffset;
+                    State.blockData.targetX[index] = State.blockData.x[index];
+
+                    // Y = spread vertically (scaled for high BPS)
+                    const randomY = (Math.random() - 0.5) * 300 * yScale;
+                    State.blockData.y[index] = randomY;
+                    State.blockData.targetY[index] = randomY;
+                }
                 State.blockData.linearIndex[index] = -1;
 
                 // BlueWork: subtract (i+1) to make each dummy unique and lower priority
@@ -3113,12 +3139,12 @@
                 const blockIndexInColumn = State.dagColumnCount.get(columnKey) || 0;
                 State.dagColumnCount.set(columnKey, blockIndexInColumn + 1);
 
-                // Calculate Y: 0, +20, -20, +40, -40, ...
+                // Calculate Y: 0, +20, -20, +40, -40, ... (scaled for high BPS)
                 let blockY;
                 if (blockIndexInColumn === 0) {
                     blockY = 0;
                 } else {
-                    const offset = Math.ceil(blockIndexInColumn / 2) * CONFIG.Y_STEP;
+                    const offset = Math.ceil(blockIndexInColumn / 2) * CONFIG.Y_STEP * yScale;
                     const direction = (blockIndexInColumn % 2 === 1) ? 1 : -1;
                     blockY = offset * direction;
                 }
@@ -3568,15 +3594,17 @@
                     }
 
                     // Second pass: assign X/Y positions
+                    // Apply yScale for high BPS simulation
+                    const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
                     for (const [column, indices] of columnBlocks) {
                         const columnX = column * CONFIG.DAA_COLUMN_WIDTH;
                         indices.forEach((idx, blockIndexInColumn) => {
-                            // Calculate Y: 0, +20, -20, +40, -40, ...
+                            // Calculate Y: 0, +20, -20, +40, -40, ... (scaled for high BPS)
                             let blockY;
                             if (blockIndexInColumn === 0) {
                                 blockY = 0;
                             } else {
-                                const offset = Math.ceil(blockIndexInColumn / 2) * CONFIG.Y_STEP;
+                                const offset = Math.ceil(blockIndexInColumn / 2) * CONFIG.Y_STEP * yScale;
                                 const direction = (blockIndexInColumn % 2 === 1) ? 1 : -1;
                                 blockY = offset * direction;
                             }
