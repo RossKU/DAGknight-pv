@@ -436,9 +436,8 @@
         /* Tutorial */
         #tutorial-btn {
             position: absolute;
-            bottom: 16px;
-            left: 50%;
-            transform: translateX(-50%);
+            bottom: 150px;
+            right: 16px;
             z-index: 100;
             background: rgba(74, 144, 217, 0.2);
             border: 1px solid rgba(74, 144, 217, 0.5);
@@ -3847,7 +3846,7 @@
                 {
                     title: 'The green line = chosen path.',
                     content: '<p>From gray blocks, follow the "heaviest" route — most work.</p><p>This is the <span class="highlight-green">🟩 Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
-                    highlight: null,
+                    highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
                     }
