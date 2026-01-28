@@ -748,7 +748,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v148-dummy-dag',
+            VERSION: 'v149-edge-limit',
 
             // Display
             MAX_BLOCKS: 500,
@@ -795,6 +795,9 @@
                 MAX_PARENT_SELECT: 2,  // Dummy removed from tips after this many selections
                 MAX_DUMMY_PARENTS: 2,  // Max dummy tips to add as parents per block
             },
+
+            // Edge display limit (DAG mode performance)
+            MAX_EDGES_PER_BLOCK: 3,    // Max edges to draw per block (0 = unlimited)
         };
 
         // ------------------------------------------------------------
@@ -1139,8 +1142,11 @@
                 // Edges fade out naturally as blocks reach Y=0, not when linearized
                 if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
+                    let edgesThisBlock = 0;
+                    const maxPerBlock = CONFIG.MAX_EDGES_PER_BLOCK || parents.length;
                     for (const parentHash of parents) {
                         if (edgeCount >= CONFIG.MAX_EDGES) break;
+                        if (edgesThisBlock >= maxPerBlock) break;
                         const parentIdx = State.blockHashToIndex.get(parentHash);
                         if (parentIdx !== undefined) {
                             const parentScreenX = (x[parentIdx] - vpX) * zoom + halfWidth;
@@ -1149,6 +1155,7 @@
                             edges.moveTo(screenX, screenY);
                             edges.lineTo(parentScreenX, parentScreenY);
                             edgeCount++;
+                            edgesThisBlock++;
                         }
                     }
                 }
