@@ -434,6 +434,10 @@
         }
 
         /* Tutorial */
+        @keyframes gentle-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
         #tutorial-btn {
             position: absolute;
             bottom: 150px;
@@ -450,10 +454,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            animation: gentle-pulse 3s ease-in-out infinite;
         }
         #tutorial-btn:hover {
             background: rgba(74, 144, 217, 0.4);
             border-color: #4A90D9;
+            animation: none;
         }
         #tutorial-btn .icon {
             font-size: 16px;
@@ -3863,27 +3869,22 @@
                 // Step 8: Linearization
                 {
                     title: 'Making it a single line.',
-                    content: '<p><span class="highlight-green">🟩 Green zone</span>: the most trusted path is <strong>temporarily</strong> chosen as backbone.</p><p><span class="highlight-blue">🟦 Blue zone</span>: it\'s <strong>permanent</strong>.</p><p>Large blocks place smaller ones to their left, filling gaps by trust.</p>',
+                    content: '<p><span class="highlight-green">🟩 Green zone</span>: the most trusted path is <strong>temporarily</strong> chosen as backbone.</p><p><span class="highlight-blue">🟦 Blue zone</span>: it\'s <strong>permanent</strong>.</p><p>Large blocks place smaller parent blocks to their left, filling gaps in order of trust.</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
                     }
                 },
-                // Step 9: Result
+                // Step 9: Explore
                 {
-                    title: 'See them line up.',
-                    content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>All those parallel blocks → one ordered sequence.</p>',
-                    highlight: 'view-mode-controls',
-                    action: () => {
-                        if (CONFIG.VIEW_MODE !== 'linear') {
-                            DOM.btnViewLinear.click();
-                        }
-                    }
+                    title: 'Pause and explore.',
+                    content: '<p>Click <strong>Pause</strong> to freeze the view.</p><p>Then click any block to see its details.</p>',
+                    highlight: 'controls',
                 },
                 // Step 10: Conclusion
                 {
                     title: 'This is DAGknight.',
-                    content: '<p>Fast <strong>and</strong> secure.</p>',
+                    content: '<p>Fast <strong>and</strong> secure.</p><p>No central authority.</p>',
                     highlight: null,
                     final: true,
                 }
