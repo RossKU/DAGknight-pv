@@ -812,7 +812,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v151-landscape',
+            VERSION: 'v152-daa-edge',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1291,12 +1291,14 @@
 
             if (!isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
                 // Normal mode: draw behind blocks
-                const { targetX } = State.blockData;
-                let lccaTargetX = -Infinity;
+                // Use DAA score instead of X position for active zone detection
+                // (X position fails in DAG mode where same-column blocks have same X)
+                const { daaScore } = State.blockData;
+                let lccaDaa = -Infinity;
                 if (State.lccaHash) {
                     const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
                     if (lccaIdx !== undefined) {
-                        lccaTargetX = targetX[lccaIdx];
+                        lccaDaa = daaScore[lccaIdx];
                     }
                 }
 
@@ -1307,7 +1309,7 @@
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        const bothInActive = daaScore[idx1] >= lccaDaa && daaScore[idx2] >= lccaDaa;
                         if (!bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
@@ -1327,7 +1329,7 @@
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        const bothInActive = daaScore[idx1] >= lccaDaa && daaScore[idx2] >= lccaDaa;
                         if (bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
@@ -1384,15 +1386,15 @@
             // Tutorial Step 6,7 (index 5,6): Draw Selected Chain on TOP with arrows (child → parent)
             // Blue for finalized (before LCCA), Green for active (LCCA to tips)
             if (isTutorialChainStep && State.selectedChainEdges && State.selectedChainEdges.length > 0) {
-                const { targetX } = State.blockData;
+                const { daaScore } = State.blockData;
                 const arrowSize = 10 * zoom;
 
-                // Get LCCA's targetX
-                let lccaTargetX = -Infinity;
+                // Get LCCA's DAA score (not X position - X fails in DAG mode)
+                let lccaDaa = -Infinity;
                 if (State.lccaHash) {
                     const lccaIdx = State.blockHashToIndex.get(State.lccaHash);
                     if (lccaIdx !== undefined) {
-                        lccaTargetX = targetX[lccaIdx];
+                        lccaDaa = daaScore[lccaIdx];
                     }
                 }
 
@@ -1402,7 +1404,7 @@
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        const bothInActive = daaScore[idx1] >= lccaDaa && daaScore[idx2] >= lccaDaa;
                         if (!bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
@@ -1431,7 +1433,7 @@
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
                     if (idx1 !== undefined && idx2 !== undefined) {
-                        const bothInActive = targetX[idx1] >= lccaTargetX && targetX[idx2] >= lccaTargetX;
+                        const bothInActive = daaScore[idx1] >= lccaDaa && daaScore[idx2] >= lccaDaa;
                         if (bothInActive) {
                             const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
                             const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
