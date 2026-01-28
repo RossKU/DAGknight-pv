@@ -824,7 +824,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v157',
+            VERSION: 'v158',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3689,8 +3689,11 @@
             });
 
             DOM.btnDummy100bps.addEventListener('click', () => {
-                // 100BPS is disabled - show development message
-                alert('100BPS is under development. Stay tuned!');
+                // 100BPS is disabled - show development message (non-blocking)
+                const btn = DOM.btnDummy100bps;
+                const originalText = btn.textContent;
+                btn.textContent = 'Coming Soon!';
+                setTimeout(() => { btn.textContent = originalText; }, 1500);
             });
 
             // View mode controls
