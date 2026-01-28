@@ -322,6 +322,18 @@
             color: #FFD700;
         }
 
+        #dummy-controls button.disabled {
+            background: rgba(100, 100, 100, 0.2);
+            border-color: #555;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        #dummy-controls button.disabled:hover {
+            background: rgba(100, 100, 100, 0.2);
+            border-color: #555;
+        }
+
         /* View mode controls */
         #view-mode-controls {
             position: absolute;
@@ -774,7 +786,7 @@
             <span class="label">BPS Simulator</span>
             <button id="btn-dummy-toggle">OFF</button>
             <button id="btn-dummy-30bps" class="multiplier selected">30BPS</button>
-            <button id="btn-dummy-100bps" class="multiplier">100BPS</button>
+            <button id="btn-dummy-100bps" class="multiplier disabled">100BPS</button>
         </div>
 
         <div id="view-mode-controls">
@@ -812,7 +824,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v156',
+            VERSION: 'v157',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3677,8 +3689,8 @@
             });
 
             DOM.btnDummy100bps.addEventListener('click', () => {
-                CONFIG.DUMMY.MULTIPLIER = 9;  // 10BPS × 10 = 100BPS
-                updateDummyUI();
+                // 100BPS is disabled - show development message
+                alert('100BPS is under development. Stay tuned!');
             });
 
             // View mode controls
@@ -4032,10 +4044,24 @@
                     title: 'This is DAGknight.',
                     content: '<p>Fast <strong>and</strong> secure.</p><p>No central authority.</p>',
                     highlight: null,
-                    final: true,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'linear') DOM.btnViewLinear.click();
                     }
+                },
+                // Step 11: Block Info
+                {
+                    title: 'Want to see more?',
+                    content: '<p>Press <strong>Pause</strong> and tap any block.</p><p>You can see its hash, DAA score, and more in the <strong>Block Info</strong> panel.</p>',
+                    highlight: 'controls',
+                    action: null
+                },
+                // Step 12: BPS Simulator
+                {
+                    title: 'Experience 30 BPS.',
+                    content: '<p>Turn on the <strong>BPS Simulator</strong> to experience what 30 blocks per second looks like.</p><p>This is the future of Kaspa.</p>',
+                    highlight: 'dummy-controls',
+                    final: true,
+                    action: null
                 }
             ],
 
