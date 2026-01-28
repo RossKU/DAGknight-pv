@@ -617,14 +617,17 @@
 
         /* Responsive: Portrait / Narrow screens */
         @media (max-width: 600px) {
-            /* Top: Keep Network State, hide Debug State */
+            /* Top: Keep Network State visible, hide Debug State */
+            #status {
+                display: block !important;
+            }
             #stats {
-                display: none;
+                display: none !important;
             }
 
             /* Bottom: Hide Legend (Block Type) to avoid collision with controls */
             #legend {
-                display: none;
+                display: none !important;
             }
 
             /* Adjust tutorial button position for narrow screens */
