@@ -812,7 +812,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v155',
+            VERSION: 'v156',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3284,7 +3284,7 @@
                 const dummyParentsToAdd = [];
                 let addedCount = 0;
                 const dynamicLimit = 4;  // Fixed: max 4 dummy parents per block
-                const minDaaDist = 2;  // Minimum DAA distance for dummy parent
+                const minDaaDist = 1;  // Minimum DAA distance for dummy parent
 
                 for (const [dummyHash, selectCount] of State.dummyTips) {
                     // Limit dummy parents per block (dynamic based on multiplier)
