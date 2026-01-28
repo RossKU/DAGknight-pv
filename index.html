@@ -812,7 +812,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v154',
+            VERSION: 'v155',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1136,7 +1136,7 @@
 
             // Run DAGknight calculation periodically
             // Use longer interval for high BPS mode to reduce load
-            const calcInterval = CONFIG.DUMMY.ENABLED ? 2000 : CONFIG.UPDATE_INTERVAL;
+            const calcInterval = CONFIG.DUMMY.ENABLED ? 1000 : CONFIG.UPDATE_INTERVAL;
             if (now - State.lastDagknightCalc >= calcInterval) {
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
