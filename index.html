@@ -664,6 +664,20 @@
                 font-size: 13px;
             }
         }
+
+        /* Landscape mode: hide header to maximize visualization area */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #header {
+                display: none !important;
+            }
+            /* Adjust status position since header is hidden */
+            #status {
+                top: 16px;
+            }
+            #stats {
+                top: 16px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -798,7 +812,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v150-responsive',
+            VERSION: 'v151-landscape',
 
             // Display
             MAX_BLOCKS: 500,
