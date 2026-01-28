@@ -3833,28 +3833,28 @@
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
                     }
                 },
-                // Step 5: Block Colors
+                // Step 5: Block inclusion
                 {
-                    title: 'Block states',
+                    title: 'Block inclusion states',
                     content: '<p><span class="highlight-gray">⬜ Gray</span> = just arrived, pending.</p><p><span class="highlight-blue">🟦 Blue</span> = accepted into the chain.</p><p><span class="highlight-red">🟥 Red</span> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
                     highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
                     }
                 },
-                // Step 6: Green line
+                // Step 6: Start ordering
                 {
-                    title: 'The green line = chosen path.',
-                    content: '<p>From gray blocks, follow the "heaviest" route — most work.</p><p>This is the <span class="highlight-green">🟩 Selected Chain</span>. Blocks on it are shown <strong>larger</strong>.</p>',
+                    title: 'Let\'s start ordering.',
+                    content: '<p>First, find what\'s trustworthy.</p><p>Follow the "heaviest" route — most work. This is the <span class="highlight-green">🟩 Selected Chain</span>.</p><p>Blocks on it are shown <strong>larger</strong>.</p>',
                     highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
                     }
                 },
-                // Step 7: Gold = finalized
+                // Step 7: Gold = all paths agree
                 {
-                    title: 'Gold = finalized.',
-                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths agree.</p><p>Left of it = <strong>permanent</strong> (blue line).</p><p>Right of it = still changing.</p>',
+                    title: 'Where all paths agree.',
+                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths converge.</p><p>Selected chains before this point have <strong>no conflicts</strong> — they\'re trustworthy.</p>',
                     highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
