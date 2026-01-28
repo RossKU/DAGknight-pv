@@ -446,10 +446,10 @@
             background: rgba(74, 144, 217, 0.2);
             border: 1px solid rgba(74, 144, 217, 0.5);
             color: #4A90D9;
-            padding: 8px 16px;
-            border-radius: 20px;
+            padding: 6px 12px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
             transition: all 0.2s;
             display: flex;
             align-items: center;
@@ -459,6 +459,8 @@
         #tutorial-btn:hover {
             background: rgba(74, 144, 217, 0.4);
             border-color: #4A90D9;
+        }
+        #tutorial-btn.clicked {
             animation: none;
         }
         #tutorial-btn .icon {
@@ -3988,7 +3990,10 @@
         };
 
         // Tutorial event listeners
-        DOM.tutorialBtn.addEventListener('click', () => Tutorial.open());
+        DOM.tutorialBtn.addEventListener('click', () => {
+            DOM.tutorialBtn.classList.add('clicked');
+            Tutorial.open();
+        });
         DOM.tutorialOverlay.addEventListener('click', () => Tutorial.close());
         DOM.tutorialBack.addEventListener('click', () => Tutorial.back());
         DOM.tutorialNext.addEventListener('click', () => Tutorial.next());
