@@ -3882,6 +3882,9 @@
                     title: 'See them line up.',
                     content: '<p>Switch to <span class="highlight">Linear</span> view.</p><p>All those parallel blocks → one ordered sequence.</p>',
                     highlight: 'view-mode-controls',
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'linear') DOM.btnViewLinear.click();
+                    }
                 },
                 // Step 10: Conclusion
                 {
@@ -3889,6 +3892,9 @@
                     content: '<p>Fast <strong>and</strong> secure.</p><p>No central authority.</p>',
                     highlight: null,
                     final: true,
+                    action: () => {
+                        if (CONFIG.VIEW_MODE !== 'linear') DOM.btnViewLinear.click();
+                    }
                 }
             ],
 
