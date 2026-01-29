@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v191',
+            VERSION: 'v192',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3697,8 +3697,9 @@
                 }
                 // LCCA debug info
                 if (ld) {
+                    const mapSize = State.dagknight.intervalMap?.size || 0;
                     html += `LCCA: chain[${ld.foundAt}/${ld.chainLen}]<br>`;
-                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} chk:${ld.tipsChecked}`;
+                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} chk:${ld.tipsChecked} map:${mapSize}`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
