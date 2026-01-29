@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v201',
+            VERSION: 'v202',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2606,6 +2606,7 @@
             State.dagknight.hierDebug = {
                 iterations,
                 groups: totalGroups,
+                totalTips: parentHashes.length,  // All visible tips
             };
 
             // Return result
@@ -3783,7 +3784,8 @@
                     // K info + hierarchical info
                     const iter = hd?.iterations ?? 0;
                     const grps = hd?.groups ?? 0;
-                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone} iter:${iter} grps:${grps}<br>`;
+                    const totalTips = hd?.totalTips ?? kd.tips;
+                    html += `K=${kVal} tips:${totalTips}/${kd.tips} zone:${kd.zone} iter:${iter} grps:${grps}<br>`;
                     // Work values (shortened for display)
                     const blue = Number(kd.blueWork / 1000000n);
                     const red = Number(kd.redWork / 1000000n);
