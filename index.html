@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v196',
+            VERSION: 'v197',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2340,13 +2340,18 @@
                 }
             }
 
-            // Calculate redWork by VSPC traversal (dkoder: red_block_work)
-            // Traverse from finalTip back to root, summing mergeset_reds at each step
+            // Calculate redWork/grayWork by VSPC traversal (dkoder: red_block_work, gray_block_work)
+            // Traverse from finalTip back to root, classifying mergeset_reds as gray or red
             let redWork = 0n;
+            let grayWork = 0n;
             let vspcLength = 0;
             let vspcRedsCount = 0;
 
             if (finalTip && selectedParentStore.size > 0) {
+                // dkoder: get_next_chain_ancestor(tips[0], conflict_genesis)
+                // The direct child of root on the chain path toward tips[0]
+                const nextChainAncestor = getNextChainAncestor(tips[0], root);
+
                 let currentHash = finalTip;
                 const visited = new Set();
 
@@ -2360,8 +2365,17 @@
                     for (const redHash of blockReds) {
                         const ridx = State.blockHashToIndex.get(redHash);
                         if (ridx !== undefined && State.blockData.bits[ridx]) {
-                            redWork += calcWork(State.blockData.bits[ridx]);
+                            const work = calcWork(State.blockData.bits[ridx]);
                             vspcRedsCount++;
+
+                            // dkoder: classify as gray or red
+                            // Gray = red block is in the future of nextChainAncestor (on subgroup's chain path)
+                            // Red = red block is outside subgroup's chain path (adversarial)
+                            if (nextChainAncestor && isChainAncestorOf(nextChainAncestor, redHash)) {
+                                grayWork += work;  // Neutral - on subgroup's path
+                            } else {
+                                redWork += work;   // Adversarial - competing work
+                            }
                         }
                     }
 
@@ -2375,7 +2389,8 @@
                 mergesetBlues: allMergesetBlues,
                 mergesetReds: allMergesetReds,
                 blueWork: finalBlueWork,
-                redWork,  // dkoder: accumulated via VSPC traversal
+                redWork,   // dkoder: adversarial red work (excludes gray)
+                grayWork,  // dkoder: neutral red work (on subgroup's chain path)
                 blueCount: chainBlueCount + allMergesetBlues.size,
                 blueStatusStore,  // For coloring
                 k,
@@ -2412,13 +2427,14 @@
                 const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
                 const deficit = sqrtK * genesisWork;
 
-                // dkoder condition: blueWork + deficit > redWork
+                // dkoder condition: blueWork + deficit > redWork (gray excluded)
                 if (data.blueWork + deficit > data.redWork) {
                     State.dagknight.lastK = k;
                     // Store debug info for display
                     State.dagknight.kDebug = {
                         blueWork: data.blueWork,
                         redWork: data.redWork,
+                        grayWork: data.grayWork || 0n,
                         deficit: deficit,
                         vspcLength: data.vspcLength || 0,
                         vspcReds: data.vspcRedsCount || 0,
@@ -2435,6 +2451,7 @@
             State.dagknight.kDebug = {
                 blueWork: fallbackData.blueWork,
                 redWork: fallbackData.redWork,
+                grayWork: fallbackData.grayWork || 0n,
                 deficit: BigInt(Math.floor(Math.sqrt(MAX_K))) * genesisWork,
                 vspcLength: fallbackData.vspcLength || 0,
                 vspcReds: fallbackData.vspcRedsCount || 0,
@@ -2667,6 +2684,34 @@
 
             // A contains B means A.start <= B.start && B.end <= A.end
             return intervalA.start <= intervalB.start && intervalB.end <= intervalA.end;
+        }
+
+        /**
+         * Get the next chain ancestor: the direct child of 'ancestor' on the chain path toward 'descendant'
+         * dkoder: get_next_chain_ancestor(descendant, ancestor)
+         * Returns the block that is one step "forward" from ancestor toward descendant on the GHOSTDAG chain
+         */
+        function getNextChainAncestor(descendant, ancestor) {
+            if (descendant === ancestor) return null;
+
+            // Walk backward from descendant toward ancestor, tracking the previous block
+            let current = descendant;
+            let prev = null;
+            const visited = new Set();
+
+            while (current && current !== ancestor && !visited.has(current)) {
+                visited.add(current);
+                prev = current;
+
+                const idx = State.blockHashToIndex.get(current);
+                if (idx === undefined) break;
+
+                const parents = State.blockData.parentHashes[idx] || [];
+                current = findSelectedParent(parents);  // Follow GHOSTDAG chain
+            }
+
+            // If we reached ancestor, prev is the direct child on the chain path
+            return (current === ancestor) ? prev : null;
         }
 
         // ============================================================
