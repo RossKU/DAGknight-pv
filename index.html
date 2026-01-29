@@ -492,7 +492,8 @@
             padding: 24px 32px;
             width: 600px;
             max-width: calc(100% - 32px);
-            height: 260px;
+            min-height: 260px;
+            max-height: 320px;
             backdrop-filter: blur(12px);
             display: none;
             opacity: 0;
@@ -524,8 +525,9 @@
         }
         #tutorial-modal .content {
             text-align: center;
-            height: 120px;
-            overflow: hidden;
+            min-height: 100px;
+            max-height: 140px;
+            overflow-y: auto;
         }
         #tutorial-modal .content h2 {
             font-size: 18px;
@@ -820,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v203',
+            VERSION: 'v204',
 
             // Display
             MAX_BLOCKS: 500,
