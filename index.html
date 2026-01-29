@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v180',
+            VERSION: 'v181',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1698,7 +1698,7 @@
             if (hashes.length === 1) return hashes[0];
 
             // Build Selected Parent Chain for each hash
-            const chains = hashes.map(hash => {
+            const chains = hashes.map((hash, chainIdx) => {
                 const chain = [hash];
                 let current = hash;
                 const visited = new Set([hash]);
@@ -1711,6 +1711,16 @@
                     if (parents.length === 0) break;
 
                     const sp = findSelectedParent(parents);
+
+                    // DEBUG: Log first few steps of chain building
+                    if (chainIdx === 0 && i < 3) {
+                        const parentWorks = parents.map(p => {
+                            const pidx = State.blockHashToIndex.get(p);
+                            return { h: p?.slice(0,8), bw: pidx !== undefined ? State.blockData.blueWork[pidx] : 'N/A' };
+                        });
+                        console.log(`[CCA] chain0 step${i}: current=${current?.slice(0,8)}, parents=${JSON.stringify(parentWorks)}, selected=${sp?.slice(0,8)}`);
+                    }
+
                     if (!sp || visited.has(sp)) break;
 
                     visited.add(sp);
@@ -1720,8 +1730,13 @@
                 return chain;
             });
 
+            // DEBUG: Log chain lengths and first few elements
+            console.log(`[CCA] chains: ${chains.map((c,i) => `chain${i}[${c.length}]`).join(', ')}`);
+            console.log(`[CCA] chain0 first 5: ${chains[0].slice(0,5).map(h => h?.slice(0,8)).join(' → ')}`);
+
             // Find first common element in all chains
-            for (const hash of chains[0]) {
+            for (let idx = 0; idx < chains[0].length; idx++) {
+                const hash = chains[0][idx];
                 let isCommon = true;
                 for (let i = 1; i < chains.length; i++) {
                     if (!chains[i].includes(hash)) {
@@ -1729,9 +1744,16 @@
                         break;
                     }
                 }
-                if (isCommon) return hash;
+                if (isCommon) {
+                    // DEBUG: Log found LCCA
+                    const lccaIdx = State.blockHashToIndex.get(hash);
+                    const lccaDaa = lccaIdx !== undefined ? State.blockData.daaScore[lccaIdx] : 'N/A';
+                    console.log(`[CCA] LCCA found at chain0[${idx}]: ${hash?.slice(0,8)}, DAA=${lccaDaa}`);
+                    return hash;
+                }
             }
 
+            console.log(`[CCA] No LCCA found!`);
             return null;
         }
 
