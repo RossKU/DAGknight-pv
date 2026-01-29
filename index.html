@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v188',
+            VERSION: 'v189',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1008,6 +1008,9 @@
 
                 // Parameters
                 d: 10,  // deficit parameter for confirmation
+
+                // LCCA Debug
+                lccaDebug: { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0 },
             },
         };
 
@@ -1695,6 +1698,9 @@
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
         // dkoder logic: Build chain from BEST tip (highest blueWork), find first block that is ancestor of ALL others
         function commonChainAncestor(hashes) {
+            // Reset debug counters
+            State.dagknight.lccaDebug = { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0 };
+
             if (!hashes || hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
 
@@ -1723,6 +1729,8 @@
             const othersToCheck = hashes.filter(h => h !== start);
             if (othersToCheck.length === 0) return start;
 
+            State.dagknight.lccaDebug.tipsChecked = othersToCheck.length;
+
             // Build backward chain from start (dkoder: default_backward_chain_iterator)
             const chain = [start];
             let current = start;
@@ -1743,6 +1751,8 @@
                 current = sp;
             }
 
+            State.dagknight.lccaDebug.chainLen = chain.length;
+
             // dkoder: .skip(1) - skip start itself, check each block in chain
             // For each cb, check if it's chain ancestor of ALL othersToCheck
             for (let i = 1; i < chain.length; i++) {
@@ -1751,13 +1761,14 @@
                 // is_chain_ancestor_of_all: check if cb is ancestor of all others
                 let isAncestorOfAll = true;
                 for (const h of othersToCheck) {
-                    if (!isAncestor(cb, h, 200)) {
+                    if (!isAncestorWithDebug(cb, h, 200)) {
                         isAncestorOfAll = false;
                         break;
                     }
                 }
 
                 if (isAncestorOfAll) {
+                    State.dagknight.lccaDebug.foundAt = i;
                     return cb;
                 }
             }
@@ -2611,6 +2622,59 @@
             // chainResult === null means no interval data, fall through to BFS
 
             // Check cache (dkoder optimization)
+            const cacheKey = hashA + ':' + hashB;
+            const cached = State.dagknight.ancestorCache.get(cacheKey);
+            if (cached !== undefined) return cached;
+
+            const visited = new Set();
+            const queue = [hashB];
+            let depth = 0;
+
+            while (queue.length > 0 && depth < maxDepth) {
+                const levelSize = queue.length;
+                for (let i = 0; i < levelSize; i++) {
+                    const currentHash = queue.shift();
+                    if (currentHash === hashA) {
+                        State.dagknight.ancestorCache.set(cacheKey, true);
+                        return true;
+                    }
+                    if (visited.has(currentHash)) continue;
+                    visited.add(currentHash);
+
+                    const idx = State.blockHashToIndex.get(currentHash);
+                    if (idx === undefined) continue;
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    for (const parentHash of parents) {
+                        if (!visited.has(parentHash)) {
+                            queue.push(parentHash);
+                        }
+                    }
+                }
+                depth++;
+            }
+
+            State.dagknight.ancestorCache.set(cacheKey, false);
+            return false;
+        }
+
+        // Debug version of isAncestor that tracks interval vs BFS usage
+        function isAncestorWithDebug(hashA, hashB, maxDepth = 100) {
+            if (hashA === hashB) return true;
+
+            // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
+            const chainResult = isChainAncestorOf(hashA, hashB);
+            if (chainResult === true) {
+                State.dagknight.lccaDebug.intervalUsed++;
+                return true;
+            }
+            if (chainResult === false) {
+                State.dagknight.lccaDebug.intervalUsed++;
+                return false;
+            }
+            // chainResult === null means no interval data, fall through to BFS
+            State.dagknight.lccaDebug.bfsUsed++;
+
+            // Check cache
             const cacheKey = hashA + ':' + hashB;
             const cached = State.dagknight.ancestorCache.get(cacheKey);
             if (cached !== undefined) return cached;
@@ -3547,17 +3611,19 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // Simplified debug display: FPS + version + K info only
+            // Debug display: FPS + version + K info + LCCA debug
             if (DOM.debugInfo) {
                 const kd = State.dagknight.kDebug;
+                const ld = State.dagknight.lccaDebug;
                 const kVal = State.dagknight.lastK ?? '-';
                 let html = `${State.stats.fps} FPS<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
                     html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}<br>`;
-                    html += `blue:${kd.blueWork} red:${kd.redWork}<br>`;
-                    html += `deficit:${kd.deficit} vspc:${kd.vspcLength}`;
-                } else {
-                    html += `K=${kVal}`;
+                }
+                // LCCA debug info
+                if (ld) {
+                    html += `LCCA: chain[${ld.foundAt}/${ld.chainLen}]<br>`;
+                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} chk:${ld.tipsChecked}`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
