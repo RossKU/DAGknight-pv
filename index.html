@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v200',
+            VERSION: 'v201',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2439,16 +2439,23 @@
                 ? calcWork(State.blockData.bits[genesisIdx])
                 : 1n;
 
-            // Phase 1: Exponential search to find upper bound (dkoder: 1, 2, 4, 8, 16...)
-            let upper = 1;
+            // Phase 1: Exponential search (dkoder: start at k=0, double increments)
+            let lkgK = 0;           // Last known good k
+            let lowerK = 0;         // Lower bound for binary search
+            let increments = 1;
+            let foundLkg = false;
             let lastResult = null;
-            while (upper <= MAX_K) {
-                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, upper, genesisWork, virtualSP);
+
+            while (!foundLkg && lkgK <= MAX_K) {
+                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, lkgK, genesisWork, virtualSP);
                 if (result) {
-                    lastResult = { k: upper, ...result };
-                    break;
+                    lastResult = { k: lkgK, ...result };
+                    foundLkg = true;
+                } else {
+                    lowerK = lkgK;
+                    lkgK = increments;
+                    increments *= 2;
                 }
-                upper *= 2;
             }
 
             // If no valid k found in exponential search, use MAX_K
@@ -2458,19 +2465,19 @@
             }
 
             // Phase 2: Binary search to find minimum k (dkoder: binary search)
-            let lower = upper / 2;
-            let bestK = upper;
+            let bestK = lkgK;
             let bestResult = lastResult;
 
-            while (lower < upper) {
-                const mid = Math.floor((lower + upper) / 2);
-                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, mid, genesisWork, virtualSP);
+            // dkoder: binary search between lowerK and lkgK
+            while (lowerK < lkgK) {
+                const kToCheck = lowerK + Math.floor((lkgK - lowerK) / 2);
+                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, kToCheck, genesisWork, virtualSP);
                 if (result) {
-                    bestK = mid;
-                    bestResult = { k: mid, ...result };
-                    upper = mid;
+                    lkgK = kToCheck;
+                    bestK = kToCheck;
+                    bestResult = { k: kToCheck, ...result };
                 } else {
-                    lower = mid + 1;
+                    lowerK = kToCheck + 1;
                 }
             }
 
