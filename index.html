@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v195',
+            VERSION: 'v196',
 
             // Display
             MAX_BLOCKS: 500,
@@ -850,8 +850,13 @@
                 EDGE_SELECTED: 0xFFFFFF,
             },
 
-            // Performance
-            UPDATE_INTERVAL: 500,  // ms (DAGknight calculation interval for normal mode)
+            // Performance - DAGknight calculation interval (FPS adaptive)
+            // 10BPS: 200ms start, 1000ms max
+            // 30BPS: 500ms start, 1500ms max
+            // If FPS < 50, increase by 100ms
+            UPDATE_INTERVAL_10BPS: { base: 200, max: 1000 },
+            UPDATE_INTERVAL_30BPS: { base: 500, max: 1500 },
+            FPS_THRESHOLD: 50,  // Below this, increase interval
             TARGET_FPS: 60,
 
             // Network
@@ -942,6 +947,9 @@
                 visibleBlocks: 0,
                 edgeCount: 0,
             },
+
+            // Adaptive DAGknight interval (FPS-based)
+            adaptiveInterval: 200,  // Current interval, starts at base
 
             // Selected Chain (Selected Parent Chain)
             selectedChainEdges: [],    // [[fromHash, toHash], ...] - all edges, classified at render time
@@ -1152,13 +1160,31 @@
                 State.stats.fps = State.stats.frameCount;
                 State.stats.frameCount = 0;
                 State.stats.lastFpsUpdate = now;
+
+                // Adaptive interval: adjust based on FPS
+                const intervalConfig = CONFIG.DUMMY.ENABLED
+                    ? CONFIG.UPDATE_INTERVAL_30BPS
+                    : CONFIG.UPDATE_INTERVAL_10BPS;
+
+                if (State.stats.fps < CONFIG.FPS_THRESHOLD) {
+                    // FPS low - increase interval (slower updates)
+                    State.adaptiveInterval = Math.min(
+                        State.adaptiveInterval + 100,
+                        intervalConfig.max
+                    );
+                } else if (State.stats.fps >= CONFIG.FPS_THRESHOLD + 10 && State.adaptiveInterval > intervalConfig.base) {
+                    // FPS recovered - decrease interval (faster updates)
+                    State.adaptiveInterval = Math.max(
+                        State.adaptiveInterval - 50,
+                        intervalConfig.base
+                    );
+                }
+
                 updateStatsDisplay();
             }
 
-            // Run DAGknight calculation periodically
-            // Use longer interval for high BPS mode to reduce load
-            const calcInterval = CONFIG.DUMMY.ENABLED ? 1000 : CONFIG.UPDATE_INTERVAL;
-            if (now - State.lastDagknightCalc >= calcInterval) {
+            // Run DAGknight calculation periodically (adaptive interval)
+            if (now - State.lastDagknightCalc >= State.adaptiveInterval) {
                 runDAGknightCalculation();
                 State.lastDagknightCalc = now;
             }
@@ -3595,11 +3621,11 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // Debug display: FPS + version + K info
+            // Debug display: FPS + version + interval + K info
             if (DOM.debugInfo) {
                 const kd = State.dagknight.kDebug;
                 const kVal = State.dagknight.lastK ?? '-';
-                let html = `${State.stats.fps} FPS<br>${CONFIG.VERSION}<br>`;
+                let html = `${State.stats.fps} FPS ${State.adaptiveInterval}ms<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
                     html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}`;
                 }
@@ -3846,6 +3872,11 @@
 
             DOM.btnDummyToggle.addEventListener('click', () => {
                 CONFIG.DUMMY.ENABLED = !CONFIG.DUMMY.ENABLED;
+                // Reset adaptive interval to new mode's base
+                const intervalConfig = CONFIG.DUMMY.ENABLED
+                    ? CONFIG.UPDATE_INTERVAL_30BPS
+                    : CONFIG.UPDATE_INTERVAL_10BPS;
+                State.adaptiveInterval = intervalConfig.base;
                 updateDummyUI();
             });
 
