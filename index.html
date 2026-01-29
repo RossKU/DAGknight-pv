@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v189',
+            VERSION: 'v190',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1011,6 +1011,9 @@
 
                 // LCCA Debug
                 lccaDebug: { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0 },
+
+                // Interval cache for LCCA
+                intervalCacheKey: null,
             },
         };
 
@@ -2535,8 +2538,10 @@
          * This enables O(1) chain ancestor checks
          *
          * dkoder uses: store.get_interval(this)?.contains(store.get_interval(queried)?)
+         *
+         * @param useSelectedParentOnly - if true, only build edges via selected parent (GHOSTDAG chain)
          */
-        function computeIntervals(rootHash, blockSet) {
+        function computeIntervals(rootHash, blockSet, useSelectedParentOnly = false) {
             const { intervalMap } = State.dagknight;
             intervalMap.clear();
             State.dagknight.intervalCounter = 0;
@@ -2546,18 +2551,30 @@
             }
 
             // Build child map: parent → [children]
-            // This is needed because we only store parentHashes, not childHashes
             const childMap = new Map();
             for (const hash of blockSet) {
                 const idx = State.blockHashToIndex.get(hash);
                 if (idx === undefined) continue;
                 const parents = State.blockData.parentHashes[idx] || [];
-                for (const parentHash of parents) {
-                    if (!blockSet.has(parentHash)) continue;
-                    if (!childMap.has(parentHash)) {
-                        childMap.set(parentHash, []);
+
+                if (useSelectedParentOnly) {
+                    // GHOSTDAG chain: only selected parent edge
+                    const sp = findSelectedParent(parents);
+                    if (sp && blockSet.has(sp)) {
+                        if (!childMap.has(sp)) {
+                            childMap.set(sp, []);
+                        }
+                        childMap.get(sp).push(hash);
                     }
-                    childMap.get(parentHash).push(hash);
+                } else {
+                    // All parent edges (for conflict zone)
+                    for (const parentHash of parents) {
+                        if (!blockSet.has(parentHash)) continue;
+                        if (!childMap.has(parentHash)) {
+                            childMap.set(parentHash, []);
+                        }
+                        childMap.get(parentHash).push(hash);
+                    }
                 }
             }
 
@@ -2586,6 +2603,60 @@
                 if (!visited.has(hash)) {
                     dfs(hash);
                 }
+            }
+        }
+
+        /**
+         * Update intervals for LCCA calculation
+         * Builds intervals for all tips + 30 blocks deep (GHOSTDAG chain only)
+         * Cached by maxDaaScore - only recomputes when new blocks arrive
+         */
+        function updateLCCAIntervals(tips) {
+            // Check cache - skip if already computed for this DAA score
+            const cacheKey = State.maxDaaScore;
+            if (State.dagknight.intervalCacheKey === cacheKey && State.dagknight.intervalMap.size > 0) {
+                return; // Cache hit
+            }
+
+            // Build the set of blocks: all tips + 30 blocks deep via selected parent
+            const blockSet = new Set();
+
+            for (const tip of tips) {
+                let current = tip;
+                for (let depth = 0; depth < 30; depth++) {
+                    if (!current) break;
+                    blockSet.add(current);
+
+                    const idx = State.blockHashToIndex.get(current);
+                    if (idx === undefined) break;
+
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
+
+                    current = findSelectedParent(parents);
+                }
+            }
+
+            if (blockSet.size === 0) return;
+
+            // Find the oldest block (lowest DAA) as root
+            let root = null;
+            let minDaa = Infinity;
+            for (const hash of blockSet) {
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx !== undefined) {
+                    const daa = State.blockData.daaScore[idx] || 0;
+                    if (daa < minDaa) {
+                        minDaa = daa;
+                        root = hash;
+                    }
+                }
+            }
+
+            if (root) {
+                // Compute intervals using GHOSTDAG chain only
+                computeIntervals(root, blockSet, true);
+                State.dagknight.intervalCacheKey = cacheKey;
             }
         }
 
@@ -3137,6 +3208,10 @@
                 // Build edges from ALL tips (for green lines showing convergence)
                 const startTime = performance.now();
                 const { edges, orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
+
+                // Update LCCA intervals (cached, only recomputes when new blocks arrive)
+                // This enables O(1) chain ancestor checks for LCCA calculation
+                updateLCCAIntervals(tips.slice(0, 50));
 
                 // Find LCCA (convergence point where all tip paths meet)
                 const lccaHash = commonChainAncestor(tips.slice(0, 50));
