@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v181',
+            VERSION: 'v182',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1693,67 +1693,52 @@
         // --- Step 2: ConflictZoneManager Functions ---
 
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
+        // dkoder logic: Build chain from hashes[0], find first block that is ancestor of ALL other hashes
         function commonChainAncestor(hashes) {
             if (!hashes || hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
 
-            // Build Selected Parent Chain for each hash
-            const chains = hashes.map((hash, chainIdx) => {
-                const chain = [hash];
-                let current = hash;
-                const visited = new Set([hash]);
+            const start = hashes[0];
 
-                for (let i = 0; i < 200; i++) {
-                    const idx = State.blockHashToIndex.get(current);
-                    if (idx === undefined) break;
+            // Build backward chain from start (dkoder: default_backward_chain_iterator)
+            const chain = [start];
+            let current = start;
+            const visited = new Set([start]);
 
-                    const parents = State.blockData.parentHashes[idx] || [];
-                    if (parents.length === 0) break;
+            for (let i = 0; i < 200; i++) {
+                const idx = State.blockHashToIndex.get(current);
+                if (idx === undefined) break;
 
-                    const sp = findSelectedParent(parents);
+                const parents = State.blockData.parentHashes[idx] || [];
+                if (parents.length === 0) break;
 
-                    // DEBUG: Log first few steps of chain building
-                    if (chainIdx === 0 && i < 3) {
-                        const parentWorks = parents.map(p => {
-                            const pidx = State.blockHashToIndex.get(p);
-                            return { h: p?.slice(0,8), bw: pidx !== undefined ? State.blockData.blueWork[pidx] : 'N/A' };
-                        });
-                        console.log(`[CCA] chain0 step${i}: current=${current?.slice(0,8)}, parents=${JSON.stringify(parentWorks)}, selected=${sp?.slice(0,8)}`);
-                    }
+                const sp = findSelectedParent(parents);
+                if (!sp || visited.has(sp)) break;
 
-                    if (!sp || visited.has(sp)) break;
+                visited.add(sp);
+                chain.push(sp);
+                current = sp;
+            }
 
-                    visited.add(sp);
-                    chain.push(sp);
-                    current = sp;
-                }
-                return chain;
-            });
+            // dkoder: .skip(1) - skip start itself, check each block in chain
+            // For each cb, check if it's chain ancestor of ALL hashes[1..]
+            for (let i = 1; i < chain.length; i++) {
+                const cb = chain[i];
 
-            // DEBUG: Log chain lengths and first few elements
-            console.log(`[CCA] chains: ${chains.map((c,i) => `chain${i}[${c.length}]`).join(', ')}`);
-            console.log(`[CCA] chain0 first 5: ${chains[0].slice(0,5).map(h => h?.slice(0,8)).join(' → ')}`);
-
-            // Find first common element in all chains
-            for (let idx = 0; idx < chains[0].length; idx++) {
-                const hash = chains[0][idx];
-                let isCommon = true;
-                for (let i = 1; i < chains.length; i++) {
-                    if (!chains[i].includes(hash)) {
-                        isCommon = false;
+                // is_chain_ancestor_of_all: check if cb is ancestor of all remaining hashes
+                let isAncestorOfAll = true;
+                for (let j = 1; j < hashes.length; j++) {
+                    if (!isAncestor(cb, hashes[j], 200)) {
+                        isAncestorOfAll = false;
                         break;
                     }
                 }
-                if (isCommon) {
-                    // DEBUG: Log found LCCA
-                    const lccaIdx = State.blockHashToIndex.get(hash);
-                    const lccaDaa = lccaIdx !== undefined ? State.blockData.daaScore[lccaIdx] : 'N/A';
-                    console.log(`[CCA] LCCA found at chain0[${idx}]: ${hash?.slice(0,8)}, DAA=${lccaDaa}`);
-                    return hash;
+
+                if (isAncestorOfAll) {
+                    return cb;
                 }
             }
 
-            console.log(`[CCA] No LCCA found!`);
             return null;
         }
 
