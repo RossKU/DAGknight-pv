@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v199',
+            VERSION: 'v200',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2537,12 +2537,14 @@
             let candidates = [...parentHashes];
             let lastRankResult = null;
             let iterations = 0;
+            let totalGroups = 0;
 
             while (candidates.length > 1 && iterations < MAX_ITERATIONS) {
                 iterations++;
 
                 // Group candidates by next chain ancestor relative to conflict_genesis
                 const groups = groupByConflictZone(candidates, conflictGenesis);
+                totalGroups += groups.size;
 
                 if (groups.size === 0) break;
 
@@ -2592,6 +2594,12 @@
                     conflictGenesis = bestOrigin;
                 }
             }
+
+            // Store hierarchical debug info
+            State.dagknight.hierDebug = {
+                iterations,
+                groups: totalGroups,
+            };
 
             // Return result
             if (lastRankResult) {
@@ -3758,13 +3766,17 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // Debug display: FPS + version + interval + K info + gray_work
+            // Debug display: FPS + version + interval + K info + hierarchical + gray_work
             if (DOM.debugInfo) {
                 const kd = State.dagknight.kDebug;
+                const hd = State.dagknight.hierDebug;
                 const kVal = State.dagknight.lastK ?? '-';
                 let html = `${State.stats.fps} FPS ${State.adaptiveInterval}ms<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
-                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}<br>`;
+                    // K info + hierarchical info
+                    const iter = hd?.iterations ?? 0;
+                    const grps = hd?.groups ?? 0;
+                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone} iter:${iter} grps:${grps}<br>`;
                     // Work values (shortened for display)
                     const blue = Number(kd.blueWork / 1000000n);
                     const red = Number(kd.redWork / 1000000n);
