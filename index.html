@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v176',
+            VERSION: 'v177',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2548,7 +2548,7 @@
          * dkoder: is_chain_ancestor_of uses interval.contains()
          * A is ancestor of B if A.interval contains B.interval
          */
-        function isChainAncestor(hashA, hashB) {
+        function isChainAncestorOf(hashA, hashB) {
             const { intervalMap } = State.dagknight;
             const intervalA = intervalMap.get(hashA);
             const intervalB = intervalMap.get(hashB);
@@ -2568,7 +2568,7 @@
             if (hashA === hashB) return true;
 
             // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
-            const chainResult = isChainAncestor(hashA, hashB);
+            const chainResult = isChainAncestorOf(hashA, hashB);
             if (chainResult === true) return true;
             if (chainResult === false) return false;
             // chainResult === null means no interval data, fall through to BFS
