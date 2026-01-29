@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v169',
+            VERSION: 'v170',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1839,18 +1839,18 @@
             }
 
             // Check 2: candidate's blue anticone size <= k
-            const candidateAnticoneBlues = countAnticoneBlues(candidateHash, mergesetBlues);
-            if (candidateAnticoneBlues > k) {
+            const candidateBlueAnticoneSize = calcBlueAnticoneSize(candidateHash, mergesetBlues);
+            if (candidateBlueAnticoneSize > k) {
                 checkBlueStats.check2++;
                 return false;
             }
 
             // Check 3: for each existing blue, adding candidate doesn't exceed k
             for (const blueHash of mergesetBlues) {
-                const blueAnticoneWithCandidate = countAnticoneBluesWithCandidate(
+                const existingBlueAnticoneSize = calcBlueAnticoneSizeWithCandidate(
                     blueHash, candidateHash, mergesetBlues
                 );
-                if (blueAnticoneWithCandidate > k) {
+                if (existingBlueAnticoneSize > k) {
                     checkBlueStats.check3++;
                     return false;
                 }
@@ -1869,7 +1869,7 @@
         }
 
         // Helper: Count blue blocks in anticone of a block
-        function countAnticoneBlues(blockHash, blueSet) {
+        function calcBlueAnticoneSize(blockHash, blueSet) {
             let count = 0;
             for (const blueHash of blueSet) {
                 if (blueHash === blockHash) continue;
@@ -1883,7 +1883,7 @@
         }
 
         // Helper: Count anticone blues if we add candidate to blue set
-        function countAnticoneBluesWithCandidate(blueHash, candidateHash, currentBlues) {
+        function calcBlueAnticoneSizeWithCandidate(blueHash, candidateHash, currentBlues) {
             let count = 0;
 
             // Count existing blues in anticone
@@ -2011,8 +2011,8 @@
             return bestParent;
         }
 
-        // getMergesetBounded: Get mergeset (anticone of SP among zone parents)
-        function getMergesetBounded(selectedParent, parents, blockHash) {
+        // getOrderedMergeset: Get mergeset (anticone of SP among zone parents)
+        function getOrderedMergeset(selectedParent, parents, blockHash) {
             const mergeset = [];
             for (const parent of parents) {
                 if (parent === selectedParent) continue;
@@ -2035,33 +2035,33 @@
 
             // Check 2: candidate's blue anticone size <= k
             // Count blues in anticone of candidate
-            let candidateAnticoneBlues = 0;
+            let candidateBlueAnticoneSize = 0;
             for (const blueHash of mergesetBlues) {
                 if (!isAncestor(blueHash, candidateHash, 30) &&
                     !isAncestor(candidateHash, blueHash, 30)) {
-                    candidateAnticoneBlues++;
+                    candidateBlueAnticoneSize++;
                 }
             }
-            if (candidateAnticoneBlues > k) {
+            if (candidateBlueAnticoneSize > k) {
                 return false;
             }
 
             // Check 3: each existing blue's anticone with candidate <= k
             for (const blueHash of mergesetBlues) {
-                let blueAnticoneWithCandidate = 0;
+                let existingBlueAnticoneSize = 0;
                 // Count: candidate + other mergeset blues in anticone of this blue
                 if (!isAncestor(blueHash, candidateHash, 30) &&
                     !isAncestor(candidateHash, blueHash, 30)) {
-                    blueAnticoneWithCandidate++;
+                    existingBlueAnticoneSize++;
                 }
                 for (const otherBlue of mergesetBlues) {
                     if (otherBlue === blueHash) continue;
                     if (!isAncestor(blueHash, otherBlue, 30) &&
                         !isAncestor(otherBlue, blueHash, 30)) {
-                        blueAnticoneWithCandidate++;
+                        existingBlueAnticoneSize++;
                     }
                 }
-                if (blueAnticoneWithCandidate > k) {
+                if (existingBlueAnticoneSize > k) {
                     return false;
                 }
             }
@@ -2151,7 +2151,7 @@
                     selectedParentStore.set(blockHash, selectedParent);
 
                     // Get mergeset (anticone of SP among parents in store)
-                    const mergeset = getMergesetBounded(selectedParent, parentsInStore, blockHash);
+                    const mergeset = getOrderedMergeset(selectedParent, parentsInStore, blockHash);
 
                     // k-colouring on mergeset
                     const mergesetBlues = [];
