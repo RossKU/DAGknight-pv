@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v192',
+            VERSION: 'v193',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1702,7 +1702,7 @@
         // dkoder logic: Build chain from BEST tip (highest blueWork), find first block that is ancestor of ALL others
         function commonChainAncestor(hashes) {
             // Reset debug counters
-            State.dagknight.lccaDebug = { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0 };
+            State.dagknight.lccaDebug = { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0, cbMiss: 0, tipMiss: 0 };
 
             if (!hashes || hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
@@ -2733,16 +2733,19 @@
             if (hashA === hashB) return true;
 
             // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
-            const chainResult = isChainAncestorOf(hashA, hashB);
-            if (chainResult === true) {
+            const { intervalMap } = State.dagknight;
+            const intervalA = intervalMap.get(hashA);
+            const intervalB = intervalMap.get(hashB);
+
+            if (intervalA && intervalB) {
+                // Both have intervals - use O(1) check
                 State.dagknight.lccaDebug.intervalUsed++;
-                return true;
+                return intervalA.start <= intervalB.start && intervalB.end <= intervalA.end;
             }
-            if (chainResult === false) {
-                State.dagknight.lccaDebug.intervalUsed++;
-                return false;
-            }
-            // chainResult === null means no interval data, fall through to BFS
+
+            // Track why we fell back to BFS
+            if (!intervalA) State.dagknight.lccaDebug.cbMiss++;
+            if (!intervalB) State.dagknight.lccaDebug.tipMiss++;
             State.dagknight.lccaDebug.bfsUsed++;
 
             // Check cache
@@ -3699,7 +3702,8 @@
                 if (ld) {
                     const mapSize = State.dagknight.intervalMap?.size || 0;
                     html += `LCCA: chain[${ld.foundAt}/${ld.chainLen}]<br>`;
-                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} chk:${ld.tipsChecked} map:${mapSize}`;
+                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} map:${mapSize}<br>`;
+                    html += `cbMiss:${ld.cbMiss} tipMiss:${ld.tipMiss}`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
