@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v172',
+            VERSION: 'v173',
 
             // Display
             MAX_BLOCKS: 500,
@@ -999,9 +999,18 @@
                 intervalMap: new Map(),        // hash → {start, end}
                 intervalCounter: 0,            // Counter for interval assignment
 
-                // Debug (minimal - K cluster and zone size only)
+                // Debug info for K calculation
                 lastK: null,
                 lastZoneBlockCount: 0,
+                kDebug: {
+                    blueWork: 0n,
+                    redWork: 0n,
+                    deficit: 0n,
+                    vspcLength: 0,
+                    vspcReds: 0,
+                    tips: 0,
+                    zone: 0,
+                },
 
                 // Parameters
                 d: 10,  // deficit parameter for confirmation
@@ -2268,11 +2277,6 @@
                 }
             }
 
-            // Debug: log VSPC traversal stats
-            if (k === 0) {
-                console.log(`[fillBounded] k=${k}: vspcLength=${vspcLength}, vspcReds=${vspcRedsCount}, totalReds=${allMergesetReds.size}, blueWork=${finalBlueWork}, redWork=${redWork}`);
-            }
-
             return {
                 selectedParent: finalSelectedParent,
                 mergesetBlues: allMergesetBlues,
@@ -2297,7 +2301,6 @@
             // This single SP is used for all k-colouring decisions
             const virtualSP = findSelectedParent(tips);
             if (!virtualSP) {
-                console.log('[rank] No virtualSP found, using fallback');
                 const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, null);
                 return { k: MAX_K, subgroupVirtual: fallbackData };
             }
@@ -2308,9 +2311,6 @@
                 ? calcWork(State.blockData.bits[genesisIdx])
                 : 1n;
 
-            // Debug: log once per rank call
-            let debugLogged = false;
-
             for (let k = 0; k <= MAX_K; k++) {
                 // dkoder: Pass virtualSP to constrain coloring
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, k, virtualSP);
@@ -2319,25 +2319,35 @@
                 const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
                 const deficit = sqrtK * genesisWork;
 
-                // Debug log for k=0 and passing k
-                if (!debugLogged && k === 0) {
-                    console.log(`[rank] k=0: blueWork=${data.blueWork}, redWork=${data.redWork}, deficit=${deficit}, genesisWork=${genesisWork}`);
-                    console.log(`[rank] virtualSP=${virtualSP?.substring(0,12)}, tips=${tips.length}, zone=${subgroup.length}`);
-                    debugLogged = true;
-                }
-
                 // dkoder condition: blueWork + deficit > redWork
                 if (data.blueWork + deficit > data.redWork) {
-                    console.log(`[rank] PASS at k=${k}: blueWork=${data.blueWork}, redWork=${data.redWork}, deficit=${deficit}`);
-                    State.dagknight.lastK = k;  // Track K for display
+                    State.dagknight.lastK = k;
+                    // Store debug info for display
+                    State.dagknight.kDebug = {
+                        blueWork: data.blueWork,
+                        redWork: data.redWork,
+                        deficit: deficit,
+                        vspcLength: data.vspcLength || 0,
+                        vspcReds: data.vspcRedsCount || 0,
+                        tips: tips.length,
+                        zone: subgroup.length,
+                    };
                     return { k, subgroupVirtual: data };
                 }
             }
 
             // Fallback: use MAX_K
-            console.log(`[rank] FALLBACK to k=${MAX_K}`);
             const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
             State.dagknight.lastK = MAX_K;
+            State.dagknight.kDebug = {
+                blueWork: fallbackData.blueWork,
+                redWork: fallbackData.redWork,
+                deficit: BigInt(Math.floor(Math.sqrt(MAX_K))) * genesisWork,
+                vspcLength: fallbackData.vspcLength || 0,
+                vspcReds: fallbackData.vspcRedsCount || 0,
+                tips: tips.length,
+                zone: subgroup.length,
+            };
             return { k: MAX_K, subgroupVirtual: fallbackData };
         }
 
@@ -3577,10 +3587,16 @@
                 // Version
                 lines.push(CONFIG.VERSION);
 
-                // K cluster size and zone block count (minimal debug)
+                // K cluster debug info (dkoder)
                 const kVal = State.dagknight.lastK ?? '-';
-                const zoneBlocks = State.dagknight.lastZoneBlockCount ?? 0;
-                lines.push(`k:${kVal} | zone:${zoneBlocks}`);
+                const kd = State.dagknight.kDebug;
+                if (kd && kd.blueWork !== undefined) {
+                    lines.push(`K=${kVal} tips:${kd.tips} zone:${kd.zone}`);
+                    lines.push(`blue:${kd.blueWork} red:${kd.redWork}`);
+                    lines.push(`deficit:${kd.deficit} vspc:${kd.vspcLength}`);
+                } else {
+                    lines.push(`K=${kVal}`);
+                }
 
                 // Dummy status
                 if (CONFIG.DUMMY.ENABLED) {
