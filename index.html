@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v190',
+            VERSION: 'v191',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2618,12 +2618,12 @@
                 return; // Cache hit
             }
 
-            // Build the set of blocks: all tips + 30 blocks deep via selected parent
+            // Build the set of blocks: all tips + 100 blocks deep via selected parent
             const blockSet = new Set();
 
             for (const tip of tips) {
                 let current = tip;
-                for (let depth = 0; depth < 30; depth++) {
+                for (let depth = 0; depth < 100; depth++) {
                     if (!current) break;
                     blockSet.add(current);
 
