@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v198',
+            VERSION: 'v199',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2400,13 +2400,33 @@
             };
         }
 
-        // rank: Determine ranking by searching k-space (dkoder: rank)
-        // Condition: blueWork + deficit > redWork (dkoder compliant)
-        function rank(conflictGenesis, subgroup, zoneWork, tips) {
+        // selectParentFromKColouring: Single k validation (dkoder: select_parent_from_k_colouring)
+        // Returns { hash, blueWork, data } if valid, null otherwise
+        function selectParentFromKColouring(conflictGenesis, subgroup, tips, k, genesisWork, virtualSP) {
+            const data = fillConflictZoneData(conflictGenesis, subgroup, tips, k, virtualSP);
+
+            // deficit = sqrt(k) * work(conflict_genesis)
+            const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
+            const deficit = sqrtK * genesisWork;
+
+            // dkoder condition: blueWork + deficit > redWork (gray excluded)
+            if (data.blueWork + deficit > data.redWork) {
+                return {
+                    hash: data.selectedParent,
+                    blueWork: data.blueWork,
+                    data,
+                    deficit,
+                };
+            }
+            return null;
+        }
+
+        // rank: K-space search using exponential + binary search (dkoder: rank)
+        // Returns { k, subgroupVirtual } with minimum valid k
+        function rank(conflictGenesis, subgroup, tips) {
             const MAX_K = 64;
 
             // dkoder: First find virtual selected parent from tips
-            // This single SP is used for all k-colouring decisions
             const virtualSP = findSelectedParent(tips);
             if (!virtualSP) {
                 const fallbackData = fillConflictZoneData(conflictGenesis, subgroup, tips, MAX_K, null);
@@ -2419,51 +2439,62 @@
                 ? calcWork(State.blockData.bits[genesisIdx])
                 : 1n;
 
-            for (let k = 0; k <= MAX_K; k++) {
-                // dkoder: Pass virtualSP to constrain coloring
-                const data = fillConflictZoneData(conflictGenesis, subgroup, tips, k, virtualSP);
+            // Phase 1: Exponential search to find upper bound (dkoder: 1, 2, 4, 8, 16...)
+            let upper = 1;
+            let lastResult = null;
+            while (upper <= MAX_K) {
+                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, upper, genesisWork, virtualSP);
+                if (result) {
+                    lastResult = { k: upper, ...result };
+                    break;
+                }
+                upper *= 2;
+            }
 
-                // deficit = sqrt(k) * work(conflict_genesis) (dkoder: deficit)
-                const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
-                const deficit = sqrtK * genesisWork;
+            // If no valid k found in exponential search, use MAX_K
+            if (!lastResult) {
+                const fallbackData = fillConflictZoneData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
+                return { k: MAX_K, subgroupVirtual: fallbackData };
+            }
 
-                // dkoder condition: blueWork + deficit > redWork (gray excluded)
-                if (data.blueWork + deficit > data.redWork) {
-                    State.dagknight.lastK = k;
-                    // Store debug info for display
-                    State.dagknight.kDebug = {
-                        blueWork: data.blueWork,
-                        redWork: data.redWork,
-                        grayWork: data.grayWork || 0n,
-                        deficit: deficit,
-                        vspcLength: data.vspcLength || 0,
-                        vspcReds: data.vspcRedsCount || 0,
-                        tips: tips.length,
-                        zone: subgroup.length,
-                    };
-                    return { k, subgroupVirtual: data };
+            // Phase 2: Binary search to find minimum k (dkoder: binary search)
+            let lower = upper / 2;
+            let bestK = upper;
+            let bestResult = lastResult;
+
+            while (lower < upper) {
+                const mid = Math.floor((lower + upper) / 2);
+                const result = selectParentFromKColouring(conflictGenesis, subgroup, tips, mid, genesisWork, virtualSP);
+                if (result) {
+                    bestK = mid;
+                    bestResult = { k: mid, ...result };
+                    upper = mid;
+                } else {
+                    lower = mid + 1;
                 }
             }
 
-            // Fallback: use MAX_K
-            const fallbackData = fillConflictZoneData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
-            State.dagknight.lastK = MAX_K;
+            // Store debug info
+            State.dagknight.lastK = bestK;
             State.dagknight.kDebug = {
-                blueWork: fallbackData.blueWork,
-                redWork: fallbackData.redWork,
-                grayWork: fallbackData.grayWork || 0n,
-                deficit: BigInt(Math.floor(Math.sqrt(MAX_K))) * genesisWork,
-                vspcLength: fallbackData.vspcLength || 0,
-                vspcReds: fallbackData.vspcRedsCount || 0,
+                blueWork: bestResult.data.blueWork,
+                redWork: bestResult.data.redWork,
+                grayWork: bestResult.data.grayWork || 0n,
+                deficit: bestResult.deficit,
+                vspcLength: bestResult.data.vspcLength || 0,
+                vspcReds: bestResult.data.vspcRedsCount || 0,
                 tips: tips.length,
                 zone: subgroup.length,
             };
-            return { k: MAX_K, subgroupVirtual: fallbackData };
+
+            return { k: bestK, subgroupVirtual: bestResult.data };
         }
 
-        // dagknight: Main parent selection (dkoder: dagknight)
+        // dagknight: Main parent selection with hierarchical conflict resolution (dkoder: dagknight)
         // Returns { selectedParent, coloringResult, k } for batch coloring
         function dagknight(parentHashes) {
+            const MAX_ITERATIONS = 10;  // Limit to prevent infinite loops
+
             // Helper: create fallback result with k=18
             const fallbackResult = (selectedParent) => {
                 const coloringResult = kColouring(parentHashes, 18);
@@ -2485,8 +2516,8 @@
                 };
             }
 
-            // Step 1: Find conflict genesis (LCCA)
-            const conflictGenesis = commonChainAncestor(parentHashes);
+            // Step 1: Find initial conflict genesis (LCCA)
+            let conflictGenesis = commonChainAncestor(parentHashes);
             if (!conflictGenesis) {
                 return fallbackResult(null);
             }
@@ -2497,21 +2528,82 @@
                 return fallbackResult(null);
             }
 
-            // Step 2.5: Compute intervals for O(1) ancestor checks (dkoder: reachability_service)
+            // Step 2.5: Compute intervals for O(1) ancestor checks
             const zoneSet = new Set(zoneBlocks);
-            zoneSet.add(conflictGenesis);  // Include root
+            zoneSet.add(conflictGenesis);
             computeIntervals(conflictGenesis, zoneSet);
 
-            // Step 3: Rank using zone blocks (same blocks used for zoneWork)
-            const rankResult = rank(conflictGenesis, zoneBlocks, zoneWork, parentHashes);
+            // Step 3: Hierarchical conflict resolution (dkoder: while candidates > 1)
+            let candidates = [...parentHashes];
+            let lastRankResult = null;
+            let iterations = 0;
 
-            // Return full result for batch coloring
-            const selectedParent = rankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
-            return {
-                selectedParent,
-                coloringResult: rankResult.subgroupVirtual,
-                k: rankResult.k,
-            };
+            while (candidates.length > 1 && iterations < MAX_ITERATIONS) {
+                iterations++;
+
+                // Group candidates by next chain ancestor relative to conflict_genesis
+                const groups = groupByConflictZone(candidates, conflictGenesis);
+
+                if (groups.size === 0) break;
+
+                // If only one group, we're done
+                if (groups.size === 1) {
+                    const [, subgroup] = [...groups.entries()][0];
+                    lastRankResult = rank(conflictGenesis, zoneBlocks, subgroup);
+                    break;
+                }
+
+                // Rank each subgroup and find winner (lowest k, then highest blueWork)
+                let bestRank = null;
+                let bestSubgroup = null;
+                let bestOrigin = null;
+
+                for (const [origin, subgroup] of groups) {
+                    if (subgroup.length === 0) continue;
+
+                    const rankResult = rank(conflictGenesis, zoneBlocks, subgroup);
+
+                    // Compare: lower k is better, tie-break by higher blueWork
+                    if (!bestRank ||
+                        rankResult.k < bestRank.k ||
+                        (rankResult.k === bestRank.k &&
+                         rankResult.subgroupVirtual.blueWork > bestRank.subgroupVirtual.blueWork)) {
+                        bestRank = rankResult;
+                        bestSubgroup = subgroup;
+                        bestOrigin = origin;
+                    }
+                }
+
+                if (!bestRank || !bestSubgroup) break;
+
+                lastRankResult = bestRank;
+
+                // Winner becomes new candidate set
+                // dkoder: candidates = [winner's selected parent]
+                const winnerSP = bestRank.subgroupVirtual.selectedParent;
+                if (winnerSP) {
+                    candidates = [winnerSP];
+                } else {
+                    candidates = bestSubgroup;
+                }
+
+                // Update conflict genesis for next iteration
+                if (bestOrigin && bestOrigin !== conflictGenesis) {
+                    conflictGenesis = bestOrigin;
+                }
+            }
+
+            // Return result
+            if (lastRankResult) {
+                const selectedParent = lastRankResult.subgroupVirtual.selectedParent || findSelectedParent(parentHashes);
+                return {
+                    selectedParent,
+                    coloringResult: lastRankResult.subgroupVirtual,
+                    k: lastRankResult.k,
+                };
+            }
+
+            return fallbackResult(findSelectedParent(parentHashes));
         }
 
         // --- Step 5: CascadeTree Functions (Confirmation) ---
