@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v177',
+            VERSION: 'v178',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2609,57 +2609,7 @@
             return false;
         }
 
-        // Step 2.3: Find Latest Common Chain Ancestor (LCCA)
-        function findLCCA(hashes) {
-            if (hashes.length === 0) return null;
-            if (hashes.length === 1) return hashes[0];
-
-            // Build Selected Parent Chain for each hash
-            const chains = hashes.map(hash => {
-                const chain = new Set([hash]);
-                let current = hash;
-                for (let depth = 0; depth < 30; depth++) {
-                    const idx = State.blockHashToIndex.get(current);
-                    if (idx === undefined) break;
-                    const parents = State.blockData.parentHashes[idx] || [];
-                    if (parents.length === 0) break;
-
-                    let selectedParent = State.selectedParentCache.get(current);
-                    if (selectedParent === undefined) {
-                        selectedParent = selectBestFromGroup(parents);
-                        if (selectedParent) State.selectedParentCache.set(current, selectedParent);
-                    }
-
-                    if (!selectedParent || chain.has(selectedParent)) break;
-                    chain.add(selectedParent);
-                    current = selectedParent;
-                }
-                return chain;
-            });
-
-            // Find common blocks across all chains
-            let common = chains[0];
-            for (let i = 1; i < chains.length; i++) {
-                common = new Set([...common].filter(x => chains[i].has(x)));
-            }
-
-            // Return the one with highest DAA score
-            let lcca = null;
-            let maxDaa = -1;
-            for (const hash of common) {
-                const idx = State.blockHashToIndex.get(hash);
-                if (idx !== undefined) {
-                    const daa = State.blockData.daaScore[idx];
-                    if (daa > maxDaa) {
-                        maxDaa = daa;
-                        lcca = hash;
-                    }
-                }
-            }
-            return lcca;
-        }
-
-        // Step 2.4: Group blocks by conflict zone origin
+        // Step 2.3: Group blocks by conflict zone origin
         // Returns Map<conflictOriginHash, blockHash[]>
         function groupByConflictZone(blockHashes, lccaHash) {
             const groups = new Map();  // conflictOrigin -> [blockHashes]
@@ -2784,7 +2734,7 @@
             if (realParents.length === 0) return null;
             if (realParents.length === 1) return realParents[0];
 
-            const lcca = findLCCA(realParents);
+            const lcca = commonChainAncestor(realParents);
             if (!lcca) return selectBestFromGroup(realParents);
 
             const groups = groupByConflictZone(realParents, lcca);
@@ -3087,7 +3037,7 @@
                 const { edges, chainBlocks, orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
 
                 // Find LCCA (convergence point where all tip paths meet)
-                const lccaHash = findLCCA(tips.slice(0, 50));
+                const lccaHash = commonChainAncestor(tips.slice(0, 50));
                 State.lccaHash = lccaHash;
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
