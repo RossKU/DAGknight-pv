@@ -109,10 +109,11 @@
             text-align: right;
         }
 
-        #stats .fps {
-            font-size: 16px;
-            font-weight: normal;
-            color: #888;
+        /* Hide old stats elements - now shown in debug-info */
+        #stats .fps,
+        #stats #draw-calls,
+        #stats #memory-usage {
+            display: none;
         }
 
         /* Legend (Block Types) */
@@ -223,7 +224,7 @@
         }
 
         #header .subtitle {
-            color: #888;
+            color: #FFFFFF;
             font-size: 12px;
         }
 
@@ -819,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v174',
+            VERSION: 'v175',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3548,7 +3549,7 @@
         }
 
         function updateStatsDisplay() {
-            // Block count (moved from addBlock - 1/sec instead of per-block)
+            // Block count
             DOM.blockCount.textContent = State.blockCount;
 
             // DAA Score (latest)
@@ -3556,57 +3557,19 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // FPS (no emphasis)
-            DOM.fpsDisplay.textContent = `${State.stats.fps} FPS`;
-            DOM.fpsDisplay.className = 'fps';
-
-            // Draw calls and visible blocks
-            DOM.drawCalls.textContent = `Draws: ${State.stats.drawCalls} | Visible: ${State.stats.visibleBlocks}`;
-
-            // Memory (if available)
-            if (performance.memory) {
-                const mb = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
-                DOM.memoryUsage.textContent = `Mem: ${mb}MB | Edges: ${State.stats.edgeCount}`;
-            } else {
-                DOM.memoryUsage.textContent = `Edges: ${State.stats.edgeCount}`;
-            }
-
-            // Debug info (multi-line for readability)
+            // Simplified debug display: FPS + version + K info only
             if (DOM.debugInfo) {
-                const lines = [];
-
-                // Version
-                lines.push(CONFIG.VERSION);
-
-                // K cluster debug info (dkoder)
-                const kVal = State.dagknight.lastK ?? '-';
                 const kd = State.dagknight.kDebug;
+                const kVal = State.dagknight.lastK ?? '-';
+                let html = `${State.stats.fps} FPS<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
-                    lines.push(`K=${kVal} tips:${kd.tips} zone:${kd.zone}`);
-                    lines.push(`blue:${kd.blueWork} red:${kd.redWork}`);
-                    lines.push(`deficit:${kd.deficit} vspc:${kd.vspcLength}`);
+                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}<br>`;
+                    html += `blue:${kd.blueWork} red:${kd.redWork}<br>`;
+                    html += `deficit:${kd.deficit} vspc:${kd.vspcLength}`;
                 } else {
-                    lines.push(`K=${kVal}`);
+                    html += `K=${kVal}`;
                 }
-
-                // Dummy status
-                if (CONFIG.DUMMY.ENABLED) {
-                    lines.push(`[DUMMY] ${1 + CONFIG.DUMMY.MULTIPLIER}x BPS`);
-                    lines.push(`dummyTips: ${State.dummyTips?.size ?? 0}`);
-                }
-
-                // Tips breakdown (real vs dummy)
-                if (State.debugTipsInfo) {
-                    const t = State.debugTipsInfo;
-                    lines.push(`Tips: ${t.total} (R:${t.real} D:${t.dummy})`);
-                }
-
-                // Viewport debug (temporary)
-                const canvasW = State.app?.canvas?.clientWidth ?? 0;
-                const vpW = State.viewport.width;
-                lines.push(`canvas:${canvasW} vp:${vpW}`);
-
-                DOM.debugInfo.innerHTML = lines.join('<br>');
+                DOM.debugInfo.innerHTML = html;
             }
 
             // Check legend collision with dummy-controls
