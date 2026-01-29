@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v163',
+            VERSION: 'v164',
 
             // Display
             MAX_BLOCKS: 500,
@@ -875,7 +875,8 @@
             },
 
             // Edge display limit (DAG mode performance)
-            MAX_EDGES_PER_BLOCK: 3,    // Max edges to draw per block (0 = unlimited)
+            MAX_EDGES_PER_BLOCK_NORMAL: 6,  // Max edges per block in normal mode (10BPS)
+            MAX_EDGES_PER_BLOCK_DUMMY: 2,   // Max edges per block in dummy mode (30BPS)
         };
 
         // ------------------------------------------------------------
@@ -1223,8 +1224,8 @@
                 if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
                     let edgesThisBlock = 0;
-                    // Limit edges per block only in dummy mode (high BPS)
-                    const maxPerBlock = CONFIG.DUMMY.ENABLED ? CONFIG.MAX_EDGES_PER_BLOCK : parents.length;
+                    // Limit edges per block (different limits for normal vs dummy mode)
+                    const maxPerBlock = CONFIG.DUMMY.ENABLED ? CONFIG.MAX_EDGES_PER_BLOCK_DUMMY : CONFIG.MAX_EDGES_PER_BLOCK_NORMAL;
                     for (const parentHash of parents) {
                         if (edgeCount >= CONFIG.MAX_EDGES) break;
                         if (edgesThisBlock >= maxPerBlock) break;
