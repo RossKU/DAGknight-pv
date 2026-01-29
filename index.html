@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v197',
+            VERSION: 'v198',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3666,13 +3666,18 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // Debug display: FPS + version + interval + K info
+            // Debug display: FPS + version + interval + K info + gray_work
             if (DOM.debugInfo) {
                 const kd = State.dagknight.kDebug;
                 const kVal = State.dagknight.lastK ?? '-';
                 let html = `${State.stats.fps} FPS ${State.adaptiveInterval}ms<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
-                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}`;
+                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}<br>`;
+                    // Work values (shortened for display)
+                    const blue = Number(kd.blueWork / 1000000n);
+                    const red = Number(kd.redWork / 1000000n);
+                    const gray = Number((kd.grayWork || 0n) / 1000000n);
+                    html += `B:${blue}M R:${red}M G:${gray}M`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
