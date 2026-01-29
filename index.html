@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v171',
+            VERSION: 'v172',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2071,7 +2071,8 @@
 
         // fillBoundedGhostdagData: dkoder-aligned incremental processing
         // Process zone blocks using heap-based topological order (by blue_work)
-        function fillBoundedGhostdagData(root, zoneBlocks, tips, k) {
+        // virtualSP: The single selected parent for the entire subgroup (dkoder compliant)
+        function fillBoundedGhostdagData(root, zoneBlocks, tips, k, virtualSP) {
             const zoneSet = new Set(zoneBlocks);
 
             // Step 1: Initialize stores
@@ -2237,14 +2238,39 @@
                 }
             }
 
-            // Calculate redWork (dkoder: red_block_work)
-            // Sum of work from all red blocks in mergeset
+            // Calculate redWork by VSPC traversal (dkoder: red_block_work)
+            // Traverse from finalTip back to root, summing mergeset_reds at each step
             let redWork = 0n;
-            for (const redHash of allMergesetReds) {
-                const ridx = State.blockHashToIndex.get(redHash);
-                if (ridx !== undefined && State.blockData.bits[ridx]) {
-                    redWork += calcWork(State.blockData.bits[ridx]);
+            let vspcLength = 0;
+            let vspcRedsCount = 0;
+
+            if (finalTip && selectedParentStore.size > 0) {
+                let currentHash = finalTip;
+                const visited = new Set();
+
+                // Traverse VSPC: finalTip → SP → SP's SP → ... → root
+                while (currentHash && currentHash !== root && !visited.has(currentHash)) {
+                    visited.add(currentHash);
+                    vspcLength++;
+
+                    // Get mergeset_reds for this block on the chain
+                    const blockReds = mergesetRedsStore.get(currentHash) || [];
+                    for (const redHash of blockReds) {
+                        const ridx = State.blockHashToIndex.get(redHash);
+                        if (ridx !== undefined && State.blockData.bits[ridx]) {
+                            redWork += calcWork(State.blockData.bits[ridx]);
+                            vspcRedsCount++;
+                        }
+                    }
+
+                    // Move to selected parent
+                    currentHash = selectedParentStore.get(currentHash);
                 }
+            }
+
+            // Debug: log VSPC traversal stats
+            if (k === 0) {
+                console.log(`[fillBounded] k=${k}: vspcLength=${vspcLength}, vspcReds=${vspcRedsCount}, totalReds=${allMergesetReds.size}, blueWork=${finalBlueWork}, redWork=${redWork}`);
             }
 
             return {
@@ -2252,17 +2278,29 @@
                 mergesetBlues: allMergesetBlues,
                 mergesetReds: allMergesetReds,
                 blueWork: finalBlueWork,
-                redWork,  // Added: dkoder red_block_work
+                redWork,  // dkoder: accumulated via VSPC traversal
                 blueCount: chainBlueCount + allMergesetBlues.size,
                 blueStatusStore,  // For coloring
                 k,
+                // Debug info
+                vspcLength,
+                vspcRedsCount,
             };
         }
 
         // rank: Determine ranking by searching k-space (dkoder: rank)
         // Condition: blueWork + deficit > redWork (dkoder compliant)
-        function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
+        function rank(conflictGenesis, subgroup, zoneWork, tips) {
             const MAX_K = 64;
+
+            // dkoder: First find virtual selected parent from tips
+            // This single SP is used for all k-colouring decisions
+            const virtualSP = findSelectedParent(tips);
+            if (!virtualSP) {
+                console.log('[rank] No virtualSP found, using fallback');
+                const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, null);
+                return { k: MAX_K, subgroupVirtual: fallbackData };
+            }
 
             // Get conflict_genesis work for deficit calculation
             const genesisIdx = State.blockHashToIndex.get(conflictGenesis);
@@ -2270,22 +2308,35 @@
                 ? calcWork(State.blockData.bits[genesisIdx])
                 : 1n;
 
+            // Debug: log once per rank call
+            let debugLogged = false;
+
             for (let k = 0; k <= MAX_K; k++) {
-                const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
+                // dkoder: Pass virtualSP to constrain coloring
+                const data = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, k, virtualSP);
 
                 // deficit = sqrt(k) * work(conflict_genesis) (dkoder: deficit)
                 const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
                 const deficit = sqrtK * genesisWork;
 
+                // Debug log for k=0 and passing k
+                if (!debugLogged && k === 0) {
+                    console.log(`[rank] k=0: blueWork=${data.blueWork}, redWork=${data.redWork}, deficit=${deficit}, genesisWork=${genesisWork}`);
+                    console.log(`[rank] virtualSP=${virtualSP?.substring(0,12)}, tips=${tips.length}, zone=${subgroup.length}`);
+                    debugLogged = true;
+                }
+
                 // dkoder condition: blueWork + deficit > redWork
                 if (data.blueWork + deficit > data.redWork) {
+                    console.log(`[rank] PASS at k=${k}: blueWork=${data.blueWork}, redWork=${data.redWork}, deficit=${deficit}`);
                     State.dagknight.lastK = k;  // Track K for display
                     return { k, subgroupVirtual: data };
                 }
             }
 
             // Fallback: use MAX_K
-            const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, MAX_K);
+            console.log(`[rank] FALLBACK to k=${MAX_K}`);
+            const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
             State.dagknight.lastK = MAX_K;
             return { k: MAX_K, subgroupVirtual: fallbackData };
         }
