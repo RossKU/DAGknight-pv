@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v175',
+            VERSION: 'v176',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1970,9 +1970,9 @@
 
         // --- Step 4: DagknightExecutor - dkoder-aligned incremental processing ---
 
-        // getBlueWorkForSort: Get blue_work for sorting (from global GHOSTDAG data)
+        // getBlueWork: Get blue_work for sorting (from global GHOSTDAG data)
         // blueWork is stored as hex string from API, convert to BigInt for numeric comparison
-        function getBlueWorkForSort(hash) {
+        function getBlueWork(hash) {
             const idx = State.blockHashToIndex.get(hash);
             if (idx === undefined) return 0n;
             const hexStr = State.blockData.blueWork?.[idx];
@@ -2017,8 +2017,8 @@
             return bestParent;
         }
 
-        // getOrderedMergeset: Get mergeset (anticone of SP among zone parents)
-        function getOrderedMergeset(selectedParent, parents, blockHash) {
+        // getZoneMergeset: Get mergeset in zone context (anticone of SP among zone parents)
+        function getZoneMergeset(selectedParent, parents) {
             const mergeset = [];
             for (const parent of parents) {
                 if (parent === selectedParent) continue;
@@ -2075,10 +2075,10 @@
             return true;
         }
 
-        // fillBoundedGhostdagData: dkoder-aligned incremental processing
+        // fillConflictZoneData: dkoder-aligned incremental processing
         // Process zone blocks using heap-based topological order (by blue_work)
         // virtualSP: The single selected parent for the entire subgroup (dkoder compliant)
-        function fillBoundedGhostdagData(root, zoneBlocks, tips, k, virtualSP) {
+        function fillConflictZoneData(root, zoneBlocks, tips, k, virtualSP) {
             const zoneSet = new Set(zoneBlocks);
 
             // Step 1: Initialize stores
@@ -2095,8 +2095,8 @@
 
             // Step 2: Sort zone blocks by blue_work (ascending) - simulates heap
             const sortedByWork = [...zoneBlocks].sort((a, b) => {
-                const workA = getBlueWorkForSort(a);
-                const workB = getBlueWorkForSort(b);
+                const workA = getBlueWork(a);
+                const workB = getBlueWork(b);
                 if (workA < workB) return -1;
                 if (workA > workB) return 1;
                 return 0;
@@ -2158,7 +2158,7 @@
                     selectedParentStore.set(blockHash, selectedParent);
 
                     // Get mergeset (anticone of SP among parents in store)
-                    const mergeset = getOrderedMergeset(selectedParent, parentsInStore, blockHash);
+                    const mergeset = getZoneMergeset(selectedParent, parentsInStore);
 
                     // k-colouring on mergeset
                     const mergesetBlues = [];
@@ -2298,7 +2298,7 @@
             // This single SP is used for all k-colouring decisions
             const virtualSP = findSelectedParent(tips);
             if (!virtualSP) {
-                const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, null);
+                const fallbackData = fillConflictZoneData(conflictGenesis, subgroup, tips, MAX_K, null);
                 return { k: MAX_K, subgroupVirtual: fallbackData };
             }
 
@@ -2310,7 +2310,7 @@
 
             for (let k = 0; k <= MAX_K; k++) {
                 // dkoder: Pass virtualSP to constrain coloring
-                const data = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, k, virtualSP);
+                const data = fillConflictZoneData(conflictGenesis, subgroup, tips, k, virtualSP);
 
                 // deficit = sqrt(k) * work(conflict_genesis) (dkoder: deficit)
                 const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
@@ -2334,7 +2334,7 @@
             }
 
             // Fallback: use MAX_K
-            const fallbackData = fillBoundedGhostdagData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
+            const fallbackData = fillConflictZoneData(conflictGenesis, subgroup, tips, MAX_K, virtualSP);
             State.dagknight.lastK = MAX_K;
             State.dagknight.kDebug = {
                 blueWork: fallbackData.blueWork,
