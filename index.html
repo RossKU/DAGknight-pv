@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v177',
+            VERSION: 'v179',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1639,14 +1639,21 @@
             if (realParents.length === 1) return realParents[0];
 
             let selectedParent = null;
-            let maxBlueWork = '';
+            let maxBlueWork = -1n;  // BigInt for proper numeric comparison
 
             for (const parentHash of realParents) {
                 const idx = State.blockHashToIndex.get(parentHash);
                 if (idx === undefined) continue;
 
-                const blueWork = State.blockData.blueWork[idx] || '0';
-                // String comparison works for hex (same length, lexicographic = numeric)
+                const workStr = State.blockData.blueWork[idx] || '0';
+                let blueWork;
+                try {
+                    blueWork = BigInt('0x' + workStr.replace(/^0x/, ''));
+                } catch (e) {
+                    blueWork = 0n;
+                }
+
+                // Higher blueWork wins, tiebreaker: higher hash
                 if (blueWork > maxBlueWork || (blueWork === maxBlueWork && parentHash > (selectedParent || ''))) {
                     maxBlueWork = blueWork;
                     selectedParent = parentHash;
