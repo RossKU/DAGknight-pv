@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v167',
+            VERSION: 'v168',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3551,6 +3551,9 @@
                 } else {
                     // Full reconnect with complete state reset
                     try {
+                        DOM.connectionStatus.textContent = 'Connecting...';
+                        DOM.btnDisconnect.disabled = true;
+
                         // Clear all block state
                         State.blockCount = 0;
                         State.ringHead = 0;
@@ -3606,9 +3609,12 @@
                         DOM.connectionStatus.className = 'connected';
                         DOM.status.classList.add('connected');
                         DOM.btnDisconnect.textContent = 'Disconnect';
+                        DOM.btnDisconnect.disabled = false;
                     } catch (e) {
                         console.error('Connect error:', e);
-                        DOM.connectionStatus.textContent = 'Error';
+                        DOM.connectionStatus.textContent = 'Error: ' + e.message;
+                        DOM.btnDisconnect.textContent = 'Retry';
+                        DOM.btnDisconnect.disabled = false;
                     }
                 }
             });
