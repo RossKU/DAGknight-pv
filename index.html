@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v193',
+            VERSION: 'v194',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1755,6 +1755,39 @@
             }
 
             State.dagknight.lccaDebug.chainLen = chain.length;
+
+            // Compute intervals for THIS exact block set (chain + othersToCheck + their chains)
+            // This ensures intervals cover exactly what we're checking
+            const blockSet = new Set(chain);
+            for (const tip of othersToCheck) {
+                let curr = tip;
+                for (let depth = 0; depth < 100; depth++) {
+                    if (!curr) break;
+                    blockSet.add(curr);
+                    const idx = State.blockHashToIndex.get(curr);
+                    if (idx === undefined) break;
+                    const parents = State.blockData.parentHashes[idx] || [];
+                    if (parents.length === 0) break;
+                    curr = findSelectedParent(parents);
+                }
+            }
+
+            // Find oldest block as root and compute intervals
+            let root = null;
+            let minDaa = Infinity;
+            for (const hash of blockSet) {
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx !== undefined) {
+                    const daa = State.blockData.daaScore[idx] || 0;
+                    if (daa < minDaa) {
+                        minDaa = daa;
+                        root = hash;
+                    }
+                }
+            }
+            if (root) {
+                computeIntervals(root, blockSet, true);
+            }
 
             // dkoder: .skip(1) - skip start itself, check each block in chain
             // For each cb, check if it's chain ancestor of ALL othersToCheck
@@ -3212,11 +3245,8 @@
                 const startTime = performance.now();
                 const { edges, orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
 
-                // Update LCCA intervals (cached, only recomputes when new blocks arrive)
-                // This enables O(1) chain ancestor checks for LCCA calculation
-                updateLCCAIntervals(tips.slice(0, 50));
-
                 // Find LCCA (convergence point where all tip paths meet)
+                // Intervals are now computed internally in commonChainAncestor
                 const lccaHash = commonChainAncestor(tips.slice(0, 50));
                 State.lccaHash = lccaHash;
 
