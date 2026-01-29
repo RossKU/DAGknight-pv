@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v202',
+            VERSION: 'v203',
 
             // Display
             MAX_BLOCKS: 500,
@@ -4360,7 +4360,7 @@
                 // Step 5: Block inclusion
                 {
                     title: 'Block inclusion states',
-                    content: '<p><span class="highlight-gray">⬜ Gray</span> = just arrived, pending.</p><p><span class="highlight-blue">🟦 Blue</span> = accepted into the chain.</p><p><span class="highlight-red">🟥 Red</span> = rejected (doesn\'t meet specs).</p><p>At this stage, blocks are included but <strong>not yet ordered</strong>.</p>',
+                    content: '<p><span class="highlight-gray">⬜ Gray</span> = just arrived, pending.</p><p><span class="highlight-blue">🟦 Blue</span> = honest block, participates in ordering.</p><p><span class="highlight-red">🟥 Red</span> = possibly from attacker or delayed. Included but excluded from ordering.</p><p>All blocks are in the DAG, but only blue blocks decide transaction order.</p>',
                     highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
@@ -4378,7 +4378,7 @@
                 // Step 7: Gold = all paths agree
                 {
                     title: 'Where all paths agree.',
-                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths converge.</p><p>Selected chains before this point have <strong>no conflicts</strong> — they\'re trustworthy.</p>',
+                    content: '<p>The <span class="highlight-gold">🟨 gold block</span> is where all green paths converge.</p><p>This is the <strong>Latest Common Chain Ancestor</strong> — all tips agree this is their shared ancestor.</p>',
                     highlight: 'legend',
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
@@ -4387,7 +4387,7 @@
                 // Step 8: Linearization
                 {
                     title: 'Making it a single line.',
-                    content: '<p><span class="highlight-green">🟩 Green zone</span>: the most trusted path is <strong>temporarily</strong> chosen as backbone.</p><p><span class="highlight-blue">🟦 Blue zone</span>: it\'s <strong>permanent</strong>.</p><p>Large blocks place smaller parent blocks to their left, filling gaps in order of trust.</p>',
+                    content: '<p>The <span class="highlight-green">🟩 Selected Chain</span> becomes the backbone.</p><p>Order may change until enough confirmations. Large blocks place smaller parent blocks to their left.</p><p>This creates a <strong>total order</strong> from parallel blocks.</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
