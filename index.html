@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v162',
+            VERSION: 'v163',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1223,7 +1223,8 @@
                 if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
                     let edgesThisBlock = 0;
-                    const maxPerBlock = CONFIG.MAX_EDGES_PER_BLOCK || parents.length;
+                    // Limit edges per block only in dummy mode (high BPS)
+                    const maxPerBlock = CONFIG.DUMMY.ENABLED ? CONFIG.MAX_EDGES_PER_BLOCK : parents.length;
                     for (const parentHash of parents) {
                         if (edgeCount >= CONFIG.MAX_EDGES) break;
                         if (edgesThisBlock >= maxPerBlock) break;
