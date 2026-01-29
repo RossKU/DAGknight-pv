@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v170',
+            VERSION: 'v171',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2237,11 +2237,22 @@
                 }
             }
 
+            // Calculate redWork (dkoder: red_block_work)
+            // Sum of work from all red blocks in mergeset
+            let redWork = 0n;
+            for (const redHash of allMergesetReds) {
+                const ridx = State.blockHashToIndex.get(redHash);
+                if (ridx !== undefined && State.blockData.bits[ridx]) {
+                    redWork += calcWork(State.blockData.bits[ridx]);
+                }
+            }
+
             return {
                 selectedParent: finalSelectedParent,
                 mergesetBlues: allMergesetBlues,
                 mergesetReds: allMergesetReds,
                 blueWork: finalBlueWork,
+                redWork,  // Added: dkoder red_block_work
                 blueCount: chainBlueCount + allMergesetBlues.size,
                 blueStatusStore,  // For coloring
                 k,
@@ -2249,16 +2260,25 @@
         }
 
         // rank: Determine ranking by searching k-space (dkoder: rank)
-        // Optimized: limit k search to 64 (usually k=0-5 is enough)
+        // Condition: blueWork + deficit > redWork (dkoder compliant)
         function rank(conflictGenesis, subgroup, zoneWork, fullSubgroup) {
-            // Search for minimal k where blueWork >= zoneWork / 2
-            const halfZoneWork = zoneWork / 2n;
             const MAX_K = 64;
+
+            // Get conflict_genesis work for deficit calculation
+            const genesisIdx = State.blockHashToIndex.get(conflictGenesis);
+            const genesisWork = (genesisIdx !== undefined && State.blockData.bits[genesisIdx])
+                ? calcWork(State.blockData.bits[genesisIdx])
+                : 1n;
 
             for (let k = 0; k <= MAX_K; k++) {
                 const data = fillBoundedGhostdagData(conflictGenesis, subgroup, subgroup, k);
 
-                if (data.blueWork >= halfZoneWork) {
+                // deficit = sqrt(k) * work(conflict_genesis) (dkoder: deficit)
+                const sqrtK = BigInt(Math.floor(Math.sqrt(k)));
+                const deficit = sqrtK * genesisWork;
+
+                // dkoder condition: blueWork + deficit > redWork
+                if (data.blueWork + deficit > data.redWork) {
                     State.dagknight.lastK = k;  // Track K for display
                     return { k, subgroupVirtual: data };
                 }
