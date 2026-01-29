@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v182',
+            VERSION: 'v183',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1693,12 +1693,35 @@
         // --- Step 2: ConflictZoneManager Functions ---
 
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
-        // dkoder logic: Build chain from hashes[0], find first block that is ancestor of ALL other hashes
+        // dkoder logic: Build chain from BEST tip (highest blueWork), find first block that is ancestor of ALL others
         function commonChainAncestor(hashes) {
             if (!hashes || hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
 
-            const start = hashes[0];
+            // CRITICAL: Start from the BEST tip (highest blueWork)
+            // dkoder's parents[0] is the selected parent = highest blueWork
+            // This ensures LCCA is on the same chain as the visualization's selected chain
+            let start = hashes[0];
+            let bestWork = -1n;
+            for (const hash of hashes) {
+                const idx = State.blockHashToIndex.get(hash);
+                if (idx === undefined) continue;
+                const workStr = State.blockData.blueWork[idx] || '0';
+                let work;
+                try {
+                    work = BigInt('0x' + workStr.replace(/^0x/, ''));
+                } catch (e) {
+                    work = 0n;
+                }
+                if (work > bestWork) {
+                    bestWork = work;
+                    start = hash;
+                }
+            }
+
+            // Others to check = all hashes except start
+            const othersToCheck = hashes.filter(h => h !== start);
+            if (othersToCheck.length === 0) return start;
 
             // Build backward chain from start (dkoder: default_backward_chain_iterator)
             const chain = [start];
@@ -1721,14 +1744,14 @@
             }
 
             // dkoder: .skip(1) - skip start itself, check each block in chain
-            // For each cb, check if it's chain ancestor of ALL hashes[1..]
+            // For each cb, check if it's chain ancestor of ALL othersToCheck
             for (let i = 1; i < chain.length; i++) {
                 const cb = chain[i];
 
-                // is_chain_ancestor_of_all: check if cb is ancestor of all remaining hashes
+                // is_chain_ancestor_of_all: check if cb is ancestor of all others
                 let isAncestorOfAll = true;
-                for (let j = 1; j < hashes.length; j++) {
-                    if (!isAncestor(cb, hashes[j], 200)) {
+                for (const h of othersToCheck) {
+                    if (!isAncestor(cb, h, 200)) {
                         isAncestorOfAll = false;
                         break;
                     }
