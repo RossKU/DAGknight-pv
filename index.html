@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v168',
+            VERSION: 'v169',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3589,9 +3589,18 @@
                         State.dummyBlockCount = 0;
 
                         // Reset DAGknight coloring
-                        State.dagknight.confirmedBlocks.clear();
+                        State.dagknight.conflictZone.blocks.clear();
+                        State.dagknight.cascadeTree.pastBlues.clear();
+                        State.dagknight.cascadeTree.pastReds.clear();
+                        State.dagknight.cascadeTree.anticoneBlues.clear();
+                        State.dagknight.cascadeTree.arlb.clear();
+                        State.dagknight.cascadeTree.floor.clear();
+                        State.dagknight.bluesAnticoneSizes.clear();
                         State.dagknight.mergesetBlues.clear();
                         State.dagknight.mergesetReds.clear();
+                        State.dagknight.coloringK.clear();
+                        State.dagknight.ancestorCache.clear();
+                        State.dagknight.kColouringCache.clear();
                         State.selectedParentCache.clear();
 
                         // Create new RPC client
