@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v187',
+            VERSION: 'v188',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2817,8 +2817,8 @@
                     }
 
                     // Select parent for this block (for chain edge)
-                    // Use selectParent (DAGknight hierarchical resolution)
-                    const selectedParent = selectParent(parents);
+                    // Use findSelectedParent (GHOSTDAG) - same as dkoder's get_chain_parent
+                    const selectedParent = findSelectedParent(parents);
                     if (!selectedParent) break;
 
                     // Add edge if not already visited (avoid duplicates after merge)
@@ -3079,10 +3079,10 @@
                 State.lccaHash = lccaHash;
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
-                // Start from best tip, follow DAGknight-resolved parents
+                // Start from best tip (max blueWork), follow GHOSTDAG selected parents
                 // This is THE main selected chain - used for LARGE BLOCKS only
-                // Use selectParent (DAGknight hierarchical resolution)
-                const bestTip = selectParent(tips);
+                // Use findSelectedParent (GHOSTDAG) - same as dkoder's get_chain_parent
+                const bestTip = findSelectedParent(tips);
                 const chainList = [];
                 let currentChainBlock = bestTip;
                 const maxChainDepth = 100;
@@ -3096,8 +3096,8 @@
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
 
-                    // Select next chain block (DAGknight resolution)
-                    currentChainBlock = selectParent(parents);
+                    // Select next chain block (GHOSTDAG - max blueWork)
+                    currentChainBlock = findSelectedParent(parents);
                 }
                 // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
