@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v204',
+            VERSION: 'v205',
 
             // Display
             MAX_BLOCKS: 500,
@@ -4389,7 +4389,7 @@
                 // Step 8: Linearization
                 {
                     title: 'Making it a single line.',
-                    content: '<p>The <span class="highlight-green">🟩 Selected Chain</span> becomes the backbone.</p><p>Order may change until enough confirmations. Large blocks place smaller parent blocks to their left.</p><p>This creates a <strong>total order</strong> from parallel blocks.</p>',
+                    content: '<p><span class="highlight-green">🟩 Green</span> = active chain, still changing. <span class="highlight-blue">🟦 Blue</span> = confirmed, finalized.</p><p>Large blocks place smaller ones to their left, creating a <strong>total order</strong>.</p>',
                     highlight: null,
                     action: () => {
                         if (CONFIG.VIEW_MODE !== 'dag') DOM.btnViewDag.click();
