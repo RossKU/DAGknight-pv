@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v185',
+            VERSION: 'v186',
 
             // Display
             MAX_BLOCKS: 500,
@@ -2817,7 +2817,8 @@
                     }
 
                     // Select parent for this block (for chain edge)
-                    const selectedParent = selectParent(parents);
+                    // Use findSelectedParent (max blueWork) - same as commonChainAncestor
+                    const selectedParent = findSelectedParent(parents);
                     if (!selectedParent) break;
 
                     // Add edge if not already visited (avoid duplicates after merge)
@@ -3080,7 +3081,8 @@
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
                 // This is THE main selected chain - used for LARGE BLOCKS only
-                const bestTip = selectParent(tips);
+                // Use findSelectedParent (max blueWork) - same as commonChainAncestor
+                const bestTip = findSelectedParent(tips);
                 const chainList = [];
                 let currentChainBlock = bestTip;
                 const maxChainDepth = 100;
@@ -3094,8 +3096,8 @@
                     const parents = State.blockData.parentHashes[idx] || [];
                     if (parents.length === 0) break;
 
-                    // Select next chain block (highest blue_work parent)
-                    currentChainBlock = selectParent(parents);
+                    // Select next chain block (max blueWork parent)
+                    currentChainBlock = findSelectedParent(parents);
                 }
                 // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
