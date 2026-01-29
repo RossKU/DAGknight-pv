@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v194',
+            VERSION: 'v195',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1008,12 +1008,6 @@
 
                 // Parameters
                 d: 10,  // deficit parameter for confirmation
-
-                // LCCA Debug
-                lccaDebug: { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0 },
-
-                // Interval cache for LCCA
-                intervalCacheKey: null,
             },
         };
 
@@ -1701,9 +1695,6 @@
         // commonChainAncestor: Find LCCA of multiple blocks (dkoder: common_chain_ancestor)
         // dkoder logic: Build chain from BEST tip (highest blueWork), find first block that is ancestor of ALL others
         function commonChainAncestor(hashes) {
-            // Reset debug counters
-            State.dagknight.lccaDebug = { intervalUsed: 0, bfsUsed: 0, chainLen: 0, foundAt: -1, tipsChecked: 0, cbMiss: 0, tipMiss: 0 };
-
             if (!hashes || hashes.length === 0) return null;
             if (hashes.length === 1) return hashes[0];
 
@@ -1732,8 +1723,6 @@
             const othersToCheck = hashes.filter(h => h !== start);
             if (othersToCheck.length === 0) return start;
 
-            State.dagknight.lccaDebug.tipsChecked = othersToCheck.length;
-
             // Build backward chain from start (dkoder: default_backward_chain_iterator)
             const chain = [start];
             let current = start;
@@ -1753,8 +1742,6 @@
                 chain.push(sp);
                 current = sp;
             }
-
-            State.dagknight.lccaDebug.chainLen = chain.length;
 
             // Compute intervals for THIS exact block set (chain + othersToCheck + their chains)
             // This ensures intervals cover exactly what we're checking
@@ -1797,14 +1784,13 @@
                 // is_chain_ancestor_of_all: check if cb is ancestor of all others
                 let isAncestorOfAll = true;
                 for (const h of othersToCheck) {
-                    if (!isAncestorWithDebug(cb, h, 200)) {
+                    if (!isAncestor(cb, h, 200)) {
                         isAncestorOfAll = false;
                         break;
                     }
                 }
 
                 if (isAncestorOfAll) {
-                    State.dagknight.lccaDebug.foundAt = i;
                     return cb;
                 }
             }
@@ -2640,60 +2626,6 @@
         }
 
         /**
-         * Update intervals for LCCA calculation
-         * Builds intervals for all tips + 30 blocks deep (GHOSTDAG chain only)
-         * Cached by maxDaaScore - only recomputes when new blocks arrive
-         */
-        function updateLCCAIntervals(tips) {
-            // Check cache - skip if already computed for this DAA score
-            const cacheKey = State.maxDaaScore;
-            if (State.dagknight.intervalCacheKey === cacheKey && State.dagknight.intervalMap.size > 0) {
-                return; // Cache hit
-            }
-
-            // Build the set of blocks: all tips + 100 blocks deep via selected parent
-            const blockSet = new Set();
-
-            for (const tip of tips) {
-                let current = tip;
-                for (let depth = 0; depth < 100; depth++) {
-                    if (!current) break;
-                    blockSet.add(current);
-
-                    const idx = State.blockHashToIndex.get(current);
-                    if (idx === undefined) break;
-
-                    const parents = State.blockData.parentHashes[idx] || [];
-                    if (parents.length === 0) break;
-
-                    current = findSelectedParent(parents);
-                }
-            }
-
-            if (blockSet.size === 0) return;
-
-            // Find the oldest block (lowest DAA) as root
-            let root = null;
-            let minDaa = Infinity;
-            for (const hash of blockSet) {
-                const idx = State.blockHashToIndex.get(hash);
-                if (idx !== undefined) {
-                    const daa = State.blockData.daaScore[idx] || 0;
-                    if (daa < minDaa) {
-                        minDaa = daa;
-                        root = hash;
-                    }
-                }
-            }
-
-            if (root) {
-                // Compute intervals using GHOSTDAG chain only
-                computeIntervals(root, blockSet, true);
-                State.dagknight.intervalCacheKey = cacheKey;
-            }
-        }
-
-        /**
          * Check if hashA is a CHAIN ancestor of hashB using intervals
          * This is O(1) - just interval containment check
          *
@@ -2726,62 +2658,6 @@
             // chainResult === null means no interval data, fall through to BFS
 
             // Check cache (dkoder optimization)
-            const cacheKey = hashA + ':' + hashB;
-            const cached = State.dagknight.ancestorCache.get(cacheKey);
-            if (cached !== undefined) return cached;
-
-            const visited = new Set();
-            const queue = [hashB];
-            let depth = 0;
-
-            while (queue.length > 0 && depth < maxDepth) {
-                const levelSize = queue.length;
-                for (let i = 0; i < levelSize; i++) {
-                    const currentHash = queue.shift();
-                    if (currentHash === hashA) {
-                        State.dagknight.ancestorCache.set(cacheKey, true);
-                        return true;
-                    }
-                    if (visited.has(currentHash)) continue;
-                    visited.add(currentHash);
-
-                    const idx = State.blockHashToIndex.get(currentHash);
-                    if (idx === undefined) continue;
-                    const parents = State.blockData.parentHashes[idx] || [];
-                    for (const parentHash of parents) {
-                        if (!visited.has(parentHash)) {
-                            queue.push(parentHash);
-                        }
-                    }
-                }
-                depth++;
-            }
-
-            State.dagknight.ancestorCache.set(cacheKey, false);
-            return false;
-        }
-
-        // Debug version of isAncestor that tracks interval vs BFS usage
-        function isAncestorWithDebug(hashA, hashB, maxDepth = 100) {
-            if (hashA === hashB) return true;
-
-            // Try O(1) interval check first (dkoder: is_chain_ancestor_of)
-            const { intervalMap } = State.dagknight;
-            const intervalA = intervalMap.get(hashA);
-            const intervalB = intervalMap.get(hashB);
-
-            if (intervalA && intervalB) {
-                // Both have intervals - use O(1) check
-                State.dagknight.lccaDebug.intervalUsed++;
-                return intervalA.start <= intervalB.start && intervalB.end <= intervalA.end;
-            }
-
-            // Track why we fell back to BFS
-            if (!intervalA) State.dagknight.lccaDebug.cbMiss++;
-            if (!intervalB) State.dagknight.lccaDebug.tipMiss++;
-            State.dagknight.lccaDebug.bfsUsed++;
-
-            // Check cache
             const cacheKey = hashA + ':' + hashB;
             const cached = State.dagknight.ancestorCache.get(cacheKey);
             if (cached !== undefined) return cached;
@@ -3719,21 +3595,13 @@
                 ? State.maxDaaScore.toLocaleString()
                 : '-';
 
-            // Debug display: FPS + version + K info + LCCA debug
+            // Debug display: FPS + version + K info
             if (DOM.debugInfo) {
                 const kd = State.dagknight.kDebug;
-                const ld = State.dagknight.lccaDebug;
                 const kVal = State.dagknight.lastK ?? '-';
                 let html = `${State.stats.fps} FPS<br>${CONFIG.VERSION}<br>`;
                 if (kd && kd.blueWork !== undefined) {
-                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}<br>`;
-                }
-                // LCCA debug info
-                if (ld) {
-                    const mapSize = State.dagknight.intervalMap?.size || 0;
-                    html += `LCCA: chain[${ld.foundAt}/${ld.chainLen}]<br>`;
-                    html += `intv:${ld.intervalUsed} bfs:${ld.bfsUsed} map:${mapSize}<br>`;
-                    html += `cbMiss:${ld.cbMiss} tipMiss:${ld.tipMiss}`;
+                    html += `K=${kVal} tips:${kd.tips} zone:${kd.zone}`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
