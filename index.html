@@ -800,7 +800,7 @@
         <div id="controls">
             <button id="btn-disconnect">Disconnect</button>
             <button id="btn-pause">Pause</button>
-            <button id="btn-reset">Reset</button>
+            <button id="btn-reset">Clear</button>
             <button id="btn-zoom-in">+</button>
             <button id="btn-zoom-out">-</button>
         </div>
@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v166',
+            VERSION: 'v167',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3649,7 +3649,7 @@
                 } else {
                     // --- RESUME ---
                     if (State.pauseExpired) {
-                        // Cannot resume after 5 seconds - use Reset
+                        // Cannot resume after 5 seconds - use Clear
                         return;
                     }
 
