@@ -820,7 +820,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v184',
+            VERSION: 'v185',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3069,9 +3069,9 @@
 
                 if (tips.length === 0) return;
 
-                // Build orderedBlocks (all blocks that should be Y=0)
+                // Build edges from ALL tips (for green lines showing convergence)
                 const startTime = performance.now();
-                const { orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
+                const { edges, orderedBlocks } = buildSelectedChains(tips.slice(0, 50));
 
                 // Find LCCA (convergence point where all tip paths meet)
                 const lccaHash = commonChainAncestor(tips.slice(0, 50));
@@ -3079,10 +3079,9 @@
 
                 // Build Single Selected Chain for linearization (dkoder compliant)
                 // Start from best tip (highest blue_work), follow selected parents
-                // This is THE main selected chain - used for large blocks and green edges
+                // This is THE main selected chain - used for LARGE BLOCKS only
                 const bestTip = selectParent(tips);
                 const chainList = [];
-                const mainChainEdges = [];  // Edges for main chain only
                 let currentChainBlock = bestTip;
                 const maxChainDepth = 100;
 
@@ -3096,11 +3095,7 @@
                     if (parents.length === 0) break;
 
                     // Select next chain block (highest blue_work parent)
-                    const nextChainBlock = selectParent(parents);
-                    if (nextChainBlock) {
-                        mainChainEdges.push([currentChainBlock, nextChainBlock]);
-                    }
-                    currentChainBlock = nextChainBlock;
+                    currentChainBlock = selectParent(parents);
                 }
                 // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
@@ -3108,11 +3103,10 @@
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
-                // Use mainChainEdges (from bestTip only) - consistent with chainList
-                // This ensures green edges and large blocks are on the SAME chain
-                State.selectedChainEdges = mainChainEdges;
+                // Green edges: from ALL tips converging to LCCA
+                State.selectedChainEdges = edges;
 
-                // Use chainList for large blocks - only main chain gets big blocks
+                // Large blocks: only on main chain (bestTip's chain)
                 State.selectedChainBlocks = new Set(chainList);
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
