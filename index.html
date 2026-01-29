@@ -826,7 +826,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v165',
+            VERSION: 'v166',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3543,21 +3543,72 @@
                         State.isConnected = false;
                         DOM.connectionStatus.textContent = 'Disconnected';
                         DOM.connectionStatus.className = 'disconnected';
+                        DOM.status.classList.remove('connected');
                         DOM.btnDisconnect.textContent = 'Connect';
                     } catch (e) {
                         console.error('Disconnect error:', e);
                     }
                 } else {
-                    // Reconnect
+                    // Full reconnect with complete state reset
                     try {
+                        // Clear all block state
+                        State.blockCount = 0;
+                        State.ringHead = 0;
+                        State.ringTail = 0;
+                        State.blockHashToIndex.clear();
+                        State.viewport.x = 0;
+                        State.viewport.y = 0;
+                        State.viewport.targetX = 0;
+                        DOM.blockCount.textContent = '0';
+
+                        // Reset pause state
+                        State.isPaused = false;
+                        State.pauseStartTime = null;
+                        State.pauseBuffer = [];
+                        State.pauseExpired = false;
+                        State.selectedBlockIndex = null;
+                        DOM.btnPause.disabled = false;
+                        DOM.btnPause.textContent = 'Pause';
+                        DOM.blockInfo.classList.remove('visible');
+
+                        // Reset DAG state
+                        State.minDaaScore = null;
+                        State.maxDaaScore = null;
+                        State.dagColumnCount.clear();
+                        State.selectedChainEdges = [];
+                        State.selectedChainBlocks = new Set();
+                        State.linearOrder = [];
+                        State.lccaHash = null;
+                        State.sortedIndices = [];
+
+                        // Reset dummy state
+                        State.dummyTips.clear();
+                        State.dummyBlockCount = 0;
+
+                        // Reset DAGknight coloring
+                        State.dagknight.confirmedBlocks.clear();
+                        State.dagknight.mergesetBlues.clear();
+                        State.dagknight.mergesetReds.clear();
+                        State.selectedParentCache.clear();
+
+                        // Create new RPC client
+                        const resolver = new State.kaspa.Resolver();
+                        State.rpcClient = new State.kaspa.RpcClient({
+                            resolver,
+                            networkId: 'mainnet',
+                        });
+
                         await State.rpcClient.connect();
-                        await State.rpcClient.subscribeBlockAdded();
+                        await subscribeToBlocks();
+
                         State.isConnected = true;
                         DOM.connectionStatus.textContent = 'Connected';
                         DOM.connectionStatus.className = 'connected';
+                        DOM.status.classList.add('connected');
                         DOM.btnDisconnect.textContent = 'Disconnect';
                     } catch (e) {
                         console.error('Connect error:', e);
+                        DOM.connectionStatus.textContent = 'Error';
                     }
                 }
             });
