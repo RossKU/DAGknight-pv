@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v209',
+            VERSION: 'v210',
 
             // Display
             MAX_BLOCKS: 500,
@@ -830,13 +830,14 @@
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
-            SPAWN_X: 400,  // Screen-relative: blocks spawn at right side (relative to center 0)
+            SPAWN_X: -20,  // X=0 is right edge, spawn slightly left
+            RIGHT_MARGIN: 50,  // Margin from right edge of screen
             DAA_PITCH: 10,  // X spacing per DAA score in DAG mode (was 50)
             DAA_GROUP: 5,   // Group DAA scores within ±5 into same column
             DAA_COLUMN_WIDTH: 50,  // X width per column (group of DAA scores)
             Y_STEP: 20,     // Y spacing step in DAG mode
             VIEW_MODE: 'linear',  // 'linear' | 'dag'
-            CLEANUP_THRESHOLD: -1600,  // Remove blocks with X below this (≈ 2x screen width left of SPAWN_X)
+            CLEANUP_THRESHOLD: -2000,  // Remove blocks with X below this (far left of screen)
 
             // Colors
             COLORS: {
@@ -1232,7 +1233,9 @@
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
-            const halfWidth = width / 2;
+            // X=0 at right edge (minus margin), negative X goes left
+            const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
+            const halfWidth = screenAnchorX;  // Alias for compatibility
             const halfHeight = height / 2;
 
             let visibleCount = 0;
