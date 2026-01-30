@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v215',
+            VERSION: 'v216',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1251,9 +1251,10 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (extend far left for X=0 at right edge)
-                const marginX = width * 2;  // Cover blocks up to CLEANUP_THRESHOLD
-                if (screenX < -marginX || screenX > width + 100 ||
+                // Skip if outside viewport (X=0 at right edge)
+                const marginLeft = width * 1.5;  // 1.5x for left (Linear flows left)
+                const marginRight = CONFIG.VIEW_MODE === 'dag' ? width * 0.5 : 100;  // DAG needs more right margin
+                if (screenX < -marginLeft || screenX > width + marginRight ||
                     screenY < -100 || screenY > height + 100) {
                     continue;
                 }
@@ -1304,10 +1305,10 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (1.5x screen for smooth scrolling)
-                // Skip if outside viewport (extend far left for X=0 at right edge)
-                const blockMarginX = width * 2;
-                if (screenX < -blockMarginX || screenX > width + 100 ||
+                // Skip if outside viewport (X=0 at right edge)
+                const blockMarginLeft = width * 1.5;
+                const blockMarginRight = CONFIG.VIEW_MODE === 'dag' ? width * 0.5 : 100;
+                if (screenX < -blockMarginLeft || screenX > width + blockMarginRight ||
                     screenY < -50 || screenY > height + 50) {
                     continue;
                 }
