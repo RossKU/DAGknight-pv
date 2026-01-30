@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kaspa DAGknight Protocol Visualizer</title>
+    <title>Kaspa Dagknight Protocol Visualizer</title>
     <style>
         * {
             margin: 0;
@@ -693,7 +693,7 @@
         <div id="canvas-container"></div>
 
         <div id="header">
-            <h1>Kaspa DAGknight Protocol Visualizer</h1>
+            <h1>Kaspa Dagknight Protocol Visualizer</h1>
             <p class="subtitle">A Parameterless Generalization of Nakamoto Consensus</p>
             <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 197.05 196.86">
                 <defs><style>.logo-white{fill:#fff;}.logo-teal{fill:#6fc7ba;}</style></defs>
@@ -813,7 +813,7 @@
     <!-- Kaspa WASM SDK -->
     <script type="module">
         // ============================================================
-        // DAGknight Protocol Visualizer
+        // Dagknight Protocol Visualizer
         // Phase 1: Foundation
         // ============================================================
 
@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v205',
+            VERSION: 'v206',
 
             // Display
             MAX_BLOCKS: 500,
@@ -852,7 +852,7 @@
                 EDGE_SELECTED: 0xFFFFFF,
             },
 
-            // Performance - DAGknight calculation interval (FPS adaptive)
+            // Performance - Dagknight calculation interval (FPS adaptive)
             // 10BPS: 200ms start, 1000ms max
             // 30BPS: 500ms start, 1500ms max
             // If FPS < 50, increase by 100ms
@@ -950,7 +950,7 @@
                 edgeCount: 0,
             },
 
-            // Adaptive DAGknight interval (FPS-based)
+            // Adaptive Dagknight interval (FPS-based)
             adaptiveInterval: 200,  // Current interval, starts at base
 
             // Selected Chain (Selected Parent Chain)
@@ -959,14 +959,14 @@
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
-            sortedIndices: [],  // Cached: block indices sorted by X (updated in DAGknight calc, not every frame)
+            sortedIndices: [],  // Cached: block indices sorted by X (updated in Dagknight calc, not every frame)
             lastDagknightCalc: 0,
 
             // Selected Parent Cache (dkoder optimization)
             // Map<blockHash, selectedParentHash>
             selectedParentCache: new Map(),
 
-            // DAGknight Engine (dkoder-compliant)
+            // Dagknight Engine (dkoder-compliant)
             dagknight: {
                 // BlockColouring enum: 0=Pending, 1=Blue, 2=Red
                 PENDING: 0,
@@ -1185,9 +1185,9 @@
                 updateStatsDisplay();
             }
 
-            // Run DAGknight calculation periodically (adaptive interval)
+            // Run Dagknight calculation periodically (adaptive interval)
             if (now - State.lastDagknightCalc >= State.adaptiveInterval) {
-                runDAGknightCalculation();
+                runDagknightCalculation();
                 State.lastDagknightCalc = now;
             }
 
@@ -1237,7 +1237,7 @@
             let visibleCount = 0;
             let edgeCount = 0;
 
-            // Use cached sorted indices (updated in DAGknight calc, not every frame)
+            // Use cached sorted indices (updated in Dagknight calc, not every frame)
             const sortedIndices = State.sortedIndices;
 
             // First pass: draw edges (newest blocks first, up to MAX_EDGES)
@@ -1624,7 +1624,7 @@
                 State.blockData.blueWork[index] = dummyBlueWork;
                 State.blockData.bits[index] = originalBits;
 
-                // Pending state (will be colored by DAGknight if it gets children)
+                // Pending state (will be colored by Dagknight if it gets children)
                 State.blockData.confirmationState[index] = 0;
                 State.blockData.size[index] = CONFIG.BLOCK_SIZE;
 
@@ -1647,11 +1647,11 @@
         }
 
         // ------------------------------------------------------------
-        // DAGknight Algorithm
+        // Dagknight Algorithm
         // ------------------------------------------------------------
 
         // ============================================================
-        // DAGknight Engine (dkoder-compliant implementation)
+        // Dagknight Engine (dkoder-compliant implementation)
         // ============================================================
 
         // --- Step 1: Base Functions ---
@@ -1877,7 +1877,7 @@
                 if (hash === genesisHash) continue;  // Don't include genesis itself
                 visited.add(hash);
 
-                // Skip dummy blocks from DAGknight calculation (visualization only)
+                // Skip dummy blocks from Dagknight calculation (visualization only)
                 if (isDummyHash(hash)) continue;
 
                 const idx = State.blockHashToIndex.get(hash);
@@ -2669,7 +2669,7 @@
             return { hash: minHash, floor: minFloor };
         }
 
-        // updateConfirmationState: Update block confirmation based on DAGknight (dkoder-compliant)
+        // updateConfirmationState: Update block confirmation based on Dagknight (dkoder-compliant)
         function updateConfirmationState(blockHash, coloringResult) {
             const { d, PENDING, BLUE, RED } = State.dagknight;
             const idx = State.blockHashToIndex.get(blockHash);
@@ -2697,7 +2697,7 @@
         }
 
         // ============================================================
-        // End DAGknight Engine
+        // End Dagknight Engine
         // ============================================================
 
         // ============================================================
@@ -2987,7 +2987,7 @@
             return best;
         }
 
-        // Step 2.7: DAGknight Parent Selection (hierarchical conflict resolution)
+        // Step 2.7: Dagknight Parent Selection (hierarchical conflict resolution)
         // Skip dummy blocks - only select from real blocks
         function selectParent(parentHashes, depth = 0) {
             // Filter out dummies at entry - selected chain should only contain real blocks
@@ -3080,7 +3080,7 @@
         }
 
         // ============================================================
-        // Linearization Algorithm (DAGknight/GHOSTDAG compliant)
+        // Linearization Algorithm (Dagknight/GHOSTDAG compliant)
         // ============================================================
 
         // Check if 'ancestor' is an ancestor of 'block' (with depth limit)
@@ -3254,8 +3254,8 @@
             return linearOrder;
         }
 
-        // Step 2.9: Run DAGknight calculation and update block positions
-        function runDAGknightCalculation() {
+        // Step 2.9: Run Dagknight calculation and update block positions
+        function runDagknightCalculation() {
             if (State.blockCount < 2) return;
 
             try {
@@ -3330,7 +3330,7 @@
                 }
                 // chainList is now [bestTip, parent1, parent2, ...] = newest to oldest
 
-                // Build linear order (DAGknight compliant)
+                // Build linear order (Dagknight compliant)
                 const linearOrder = buildLinearOrder(chainList);
                 const calcTime = performance.now() - startTime;
 
@@ -3342,7 +3342,7 @@
                 State.orderedBlocks = orderedBlocks;
                 State.linearOrder = linearOrder;
 
-                // --- DAGknight Coloring: Dynamic k-search with caching ---
+                // --- Dagknight Coloring: Dynamic k-search with caching ---
                 const { PENDING, BLUE, RED } = State.dagknight;
                 let coloredCount = 0;
                 const processedParentSets = new Set();  // Cache: avoid duplicate calculations
@@ -3363,7 +3363,7 @@
                     if (processedParentSets.has(parentsKey)) continue;
                     processedParentSets.add(parentsKey);
 
-                    // DAGknight: Call main function (dkoder-aligned structure)
+                    // Dagknight: Call main function (dkoder-aligned structure)
                     const dkResult = dagknight(parents);
                     const coloringResult = dkResult.coloringResult;
                     const usedK = dkResult.k;
@@ -3379,7 +3379,7 @@
                         // Only update if still pending
                         if (State.blockData.confirmationState[parentIdx] !== PENDING) continue;
 
-                        // Determine blue or red based on DAGknight coloring
+                        // Determine blue or red based on Dagknight coloring
                         if (parentHash === coloringResult.selectedParent ||
                             coloringResult.mergesetBlues.has(parentHash)) {
                             State.blockData.confirmationState[parentIdx] = BLUE;
@@ -3417,7 +3417,7 @@
                         coloredCount++;
                     }
                 }
-                // --- End DAGknight Coloring ---
+                // --- End Dagknight Coloring ---
 
                 // Assign linearIndex and targetX to linearized blocks
                 // Position blocks based on view mode
@@ -3499,7 +3499,7 @@
                 }
                 State.sortedIndices.sort((a, b) => x[b] - x[a]);
             } catch (error) {
-                console.error('DAGknight calculation error:', error);
+                console.error('Dagknight calculation error:', error);
             }
         }
 
@@ -3573,7 +3573,7 @@
             }
             State.blockData.linearIndex[index] = -1;  // Not linearized yet
 
-            // Store blueScore, blueWork, and bits for DAGknight calculation
+            // Store blueScore, blueWork, and bits for Dagknight calculation
             State.blockData.blueScore[index] = Number(blockInfo.header.blueScore || 0);
             State.blockData.blueWork[index] = blockInfo.header.blueWork || '0';
             State.blockData.bits[index] = Number(blockInfo.header.bits || 0);
@@ -3631,8 +3631,8 @@
 
             State.blockData.parentHashes[index] = parents;
 
-            // DAGknight: Block starts as Pending (gray)
-            // Actual blue/red coloring is computed in updateDAGknight() every 0.5s
+            // Dagknight: Block starts as Pending (gray)
+            // Actual blue/red coloring is computed in updateDagknight() every 0.5s
             // This keeps addBlock() lightweight for high BPS
 
             // Update ring buffer
@@ -3866,7 +3866,7 @@
                         State.dummyTips.clear();
                         State.dummyBlockCount = 0;
 
-                        // Reset DAGknight coloring
+                        // Reset Dagknight coloring
                         State.dagknight.conflictZone.blocks.clear();
                         State.dagknight.cascadeTree.pastBlues.clear();
                         State.dagknight.cascadeTree.pastReds.clear();
@@ -3916,8 +3916,8 @@
                     State.selectedBlockIndex = null;
                     DOM.btnPause.textContent = 'Resume (5s)';
 
-                    // Run DAGknight calculation once to connect tips
-                    runDAGknightCalculation();
+                    // Run Dagknight calculation once to connect tips
+                    runDagknightCalculation();
                     DOM.blockInfo.classList.add('visible');
                     updateBlockInfo();
 
@@ -4406,7 +4406,7 @@
                 },
                 // Step 10: Conclusion
                 {
-                    title: 'This is DAGknight.',
+                    title: 'This is Dagknight.',
                     content: '<p>Fast <strong>and</strong> secure. No central authority.</p><p><a href="https://eprint.iacr.org/2022/1494" target="_blank">📄 Whitepaper</a> · <a href="https://github.com/coderofstuff/rusty-kaspa/tree/dkoder" target="_blank">💻 dkoder (GitHub)</a></p>',
                     highlight: null,
                     action: () => {
