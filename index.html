@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v220',
+            VERSION: 'v222',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1620,7 +1620,9 @@
                         blockY = offset * direction;
                     }
 
-                    State.blockData.x[index] = columnX;
+                    // Spawn to the right of target, animate left
+                    const spawnOffset = 50;
+                    State.blockData.x[index] = columnX + spawnOffset;
                     State.blockData.targetX[index] = columnX;
                     State.blockData.y[index] = blockY;
                     State.blockData.targetY[index] = blockY;
@@ -3580,9 +3582,10 @@
                     const columnShift = newMaxColumn - oldMaxColumn;
                     if (columnShift > 0) {
                         const xShift = -columnShift * CONFIG.DAA_COLUMN_WIDTH;
-                        // Shift all existing blocks left
+                        // Shift all existing blocks left (both x and targetX to maintain relative positions)
                         for (let i = 0; i < State.blockCount; i++) {
                             if (State.blockData.hashes[i]) {
+                                State.blockData.x[i] += xShift;
                                 State.blockData.targetX[i] += xShift;
                             }
                         }
@@ -3616,7 +3619,9 @@
                     blockY = offset * direction;
                 }
 
-                State.blockData.x[index] = columnX;
+                // Spawn to the right of target, animate left (like Linear mode)
+                const spawnOffset = 50;  // Spawn 50px to the right of target
+                State.blockData.x[index] = columnX + spawnOffset;
                 State.blockData.targetX[index] = columnX;
                 State.blockData.y[index] = blockY;
                 State.blockData.targetY[index] = blockY;
