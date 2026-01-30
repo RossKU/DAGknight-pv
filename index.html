@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v208',
+            VERSION: 'v209',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1259,9 +1259,10 @@
                 if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
                     let edgesThisBlock = 0;
-                    // Dynamic edges per block based on block count
-                    // 500 blocks → 1 edge, 250 blocks → 2 edges, 125 blocks → 4 edges, etc.
-                    const dynamicMax = Math.max(1, Math.ceil(CONFIG.MAX_EDGES / Math.max(1, State.blockCount)));
+                    // Dynamic edges per block based on VISIBLE block count (from previous frame)
+                    // 500 visible → 1 edge, 250 visible → 2 edges, 125 visible → 4 edges, etc.
+                    const visibleBlocks = State.stats.visibleBlocks || State.blockCount || 1;
+                    const dynamicMax = Math.max(1, Math.ceil(CONFIG.MAX_EDGES / Math.max(1, visibleBlocks)));
                     const maxPerBlock = CONFIG.DUMMY.ENABLED
                         ? Math.min(dynamicMax, CONFIG.MAX_EDGES_PER_BLOCK_DUMMY)
                         : Math.min(dynamicMax, CONFIG.MAX_EDGES_PER_BLOCK_NORMAL);
