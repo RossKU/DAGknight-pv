@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v232',
+            VERSION: 'v231',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1233,10 +1233,9 @@
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
-            // DAG mode: right edge anchor, Linear mode: center anchor (like v209)
-            const halfWidth = CONFIG.VIEW_MODE === 'dag'
-                ? width - CONFIG.RIGHT_MARGIN
-                : width / 2;
+            // X=0 at right edge (minus margin), negative X goes left
+            const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
+            const halfWidth = screenAnchorX;  // Alias for compatibility
             const halfHeight = height / 2;
 
             let visibleCount = 0;
@@ -4271,12 +4270,9 @@
 
                         // Convert screen coords to world coords (must match renderDAG)
                         const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
-                        // DAG mode: right edge anchor, Linear mode: center anchor
-                        const halfWidth = CONFIG.VIEW_MODE === 'dag'
-                            ? width - CONFIG.RIGHT_MARGIN
-                            : width / 2;
+                        const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
                         const halfHeight = height / 2;
-                        const worldX = (tapX - halfWidth) / zoom + vpX;
+                        const worldX = (tapX - screenAnchorX) / zoom + vpX;
                         const worldY = (tapY - halfHeight) / zoom + vpY;
 
                         // Hit test: find nearest block within radius
