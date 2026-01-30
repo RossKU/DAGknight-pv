@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v228',
+            VERSION: 'v229',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1963,20 +1963,15 @@
         // --- Step 3: K-Colouring Functions ---
 
         // checkBlueCandidate: Check if candidate can be blue with given k (dkoder: check_blue_candidate)
-        // Debug counters for rejection reasons
-        let checkBlueStats = { check1: 0, check2: 0, check3: 0, passed: 0 };
-
         function checkBlueCandidate(newBlockData, candidateHash, k, mergesetBlues) {
             // Check 1: mergeset blues count <= k
             if (mergesetBlues.size > k) {
-                checkBlueStats.check1++;
                 return false;
             }
 
             // Check 2: candidate's blue anticone size <= k
             const candidateBlueAnticoneSize = calcBlueAnticoneSize(candidateHash, mergesetBlues);
             if (candidateBlueAnticoneSize > k) {
-                checkBlueStats.check2++;
                 return false;
             }
 
@@ -1986,21 +1981,11 @@
                     blueHash, candidateHash, mergesetBlues
                 );
                 if (existingBlueAnticoneSize > k) {
-                    checkBlueStats.check3++;
                     return false;
                 }
             }
 
-            checkBlueStats.passed++;
             return true;
-        }
-
-        // Reset and expose stats
-        function resetCheckBlueStats() {
-            checkBlueStats = { check1: 0, check2: 0, check3: 0, passed: 0 };
-        }
-        function getCheckBlueStats() {
-            return checkBlueStats;
         }
 
         // Helper: Count blue blocks in anticone of a block
@@ -2056,9 +2041,6 @@
             const mergeset = orderedMergesetWithoutSelectedParent(selectedParent, parentHashes);
             const mergesetBlues = new Set();
             const mergesetReds = new Set();
-
-            // Reset debug stats for this colouring
-            resetCheckBlueStats();
 
             // Process each candidate in topological order
             for (const candidateHash of mergeset) {
@@ -2231,11 +2213,6 @@
                 return 0;
             });
 
-            // Debug counters
-            let totalMergesetBlues = 0;
-            let totalMergesetReds = 0;
-            let blocksProcessed = 0;
-            let skippedBlocks = 0;
             let iterations = 0;
 
             // Step 3: Process blocks - repeat until all are processed
@@ -2266,13 +2243,11 @@
 
                     // Skip if not all zone parents are in store yet
                     if (parentsInStore.length < zoneParents.length) {
-                        skippedBlocks++;
                         continue;
                     }
 
                     // All zone parents are ready - process this block
                     pending.delete(blockHash);
-                    blocksProcessed++;
                     processedThisRound++;
 
                     if (parentsInStore.length === 0) {
@@ -2317,8 +2292,6 @@
 
                     mergesetBluesStore.set(blockHash, mergesetBlues);
                     mergesetRedsStore.set(blockHash, mergesetReds);
-                    totalMergesetBlues += mergesetBlues.length;
-                    totalMergesetReds += mergesetReds.length;
 
                     // Calculate blue_work (dkoder formula):
                     // blue_work = SP.blue_work + sum(mergeset_blues work)
