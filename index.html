@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v229',
+            VERSION: 'v230',
 
             // Display
             MAX_BLOCKS: 500,
@@ -830,7 +830,7 @@
             BLOCK_SIZE: 8,
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
-            SPAWN_X: -20,  // X=0 is right edge, spawn slightly left
+            SPAWN_X: -20,  // Linear mode: spawn position (X=0 at right edge)
             RIGHT_MARGIN: 50,  // Margin from right edge of screen
             DAA_PITCH: 10,  // X spacing per DAA score in DAG mode (was 50)
             DAA_GROUP: 5,   // Group DAA scores within ±5 into same column
@@ -3290,15 +3290,6 @@
                         }
                     }
                 }
-
-                // DEBUG: Count real vs dummy tips
-                const realTips = tips.filter(h => !isDummyHash(h));
-                const dummyTipsCount = tips.filter(h => isDummyHash(h));
-                State.debugTipsInfo = {
-                    total: tips.length,
-                    real: realTips.length,
-                    dummy: dummyTipsCount.length,
-                };
 
                 if (tips.length === 0) return;
 
