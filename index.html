@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v230',
+            VERSION: 'v231',
 
             // Display
             MAX_BLOCKS: 500,
@@ -4268,11 +4268,11 @@
                         const tapX = endX - rect.left;
                         const tapY = endY - rect.top;
 
-                        // Convert screen coords to world coords
+                        // Convert screen coords to world coords (must match renderDAG)
                         const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
-                        const halfWidth = width / 2;
+                        const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
                         const halfHeight = height / 2;
-                        const worldX = (tapX - halfWidth) / zoom + vpX;
+                        const worldX = (tapX - screenAnchorX) / zoom + vpX;
                         const worldY = (tapY - halfHeight) / zoom + vpY;
 
                         // Hit test: find nearest block within radius
