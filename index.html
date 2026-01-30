@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v233',
+            VERSION: 'v234',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1251,9 +1251,9 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (screen coordinates, 100px margin like v209)
-                if (screenX < -100 || screenX > width + 100 ||
-                    screenY < -100 || screenY > height + 100) {
+                // Skip if outside viewport (screen coordinates)
+                if (screenX < -300 || screenX > width + 300 ||
+                    screenY < -300 || screenY > height + 300) {
                     continue;
                 }
 
@@ -1303,9 +1303,9 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (screen coordinates, 50px margin like v209)
-                if (screenX < -50 || screenX > width + 50 ||
-                    screenY < -50 || screenY > height + 50) {
+                // Skip if outside viewport (screen coordinates)
+                if (screenX < -300 || screenX > width + 300 ||
+                    screenY < -300 || screenY > height + 300) {
                     continue;
                 }
 
