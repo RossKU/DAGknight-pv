@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v210',
+            VERSION: 'v211',
 
             // Display
             MAX_BLOCKS: 500,
@@ -4059,13 +4059,10 @@
                 window.open(`https://kaspa.stream/blocks/${hash}`, '_blank');
             });
 
-            // Zoom with right edge as anchor point
+            // Zoom with X=0 (right edge) as anchor point
             function zoomWithRightAnchor(newZoom) {
-                const oldZoom = State.viewport.zoom;
-                const halfWidth = State.viewport.width / 2;
-                // Keep right edge at same world position
-                State.viewport.x += halfWidth * (1 / oldZoom - 1 / newZoom);
-                State.viewport.targetX = State.viewport.x;
+                // X=0 stays at right edge when vpX=0, so just change zoom
+                // No viewport adjustment needed
                 State.viewport.zoom = newZoom;
             }
 
