@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v216',
+            VERSION: 'v217',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1605,8 +1605,10 @@
                 const yScale = CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0;
                 if (CONFIG.VIEW_MODE === 'dag') {
                     // DAG mode: X based on column (DAA grouped), Y based on order in column
+                    // Newest blocks near X=0 (right edge), older blocks have negative X
                     const column = Math.floor((originalDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const columnX = column * CONFIG.DAA_COLUMN_WIDTH;
+                    const reverseColumn = Math.floor((State.maxDaaScore - originalDaaScore) / CONFIG.DAA_GROUP);
+                    const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;  // Newest=0, older=negative
 
                     // Get block index within column for Y positioning
                     const columnKey = column;
@@ -3591,8 +3593,10 @@
             const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
             if (CONFIG.VIEW_MODE === 'dag') {
                 // DAG mode: X based on column (DAA grouped), Y based on order in column
+                // Newest blocks near X=0 (right edge), older blocks have negative X
                 const column = Math.floor((daaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                const columnX = column * CONFIG.DAA_COLUMN_WIDTH;
+                const reverseColumn = Math.floor((State.maxDaaScore - daaScore) / CONFIG.DAA_GROUP);
+                const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;
 
                 // Get block index within column for Y positioning
                 const columnKey = column;
@@ -4141,9 +4145,12 @@
 
                     // Second pass: assign X/Y positions
                     // Apply yScale for high BPS simulation
+                    // Newest blocks near X=0 (right edge), older blocks have negative X
                     const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
+                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                     for (const [column, indices] of columnBlocks) {
-                        const columnX = column * CONFIG.DAA_COLUMN_WIDTH;
+                        const reverseColumn = maxColumn - column;
+                        const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;
                         indices.forEach((idx, blockIndexInColumn) => {
                             // Calculate Y: 0, +20, -20, +40, -40, ... (scaled for high BPS)
                             let blockY;
@@ -4160,12 +4167,8 @@
                         State.dagColumnCount.set(column, indices.length);
                     }
 
-                    // Update viewport for DAG mode (newest at right side)
-                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
-                        const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                        const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        State.viewport.targetX = maxX - CONFIG.SPAWN_X;
-                    }
+                    // Viewport stays at 0 (X=0 at right edge)
+                    State.viewport.targetX = 0;
                 } else {
                     // Linear mode: calculate correct positions using linearOrder
                     const linearOrder = State.linearOrder || [];
