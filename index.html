@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v214',
+            VERSION: 'v215',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3523,20 +3523,14 @@
                 // Viewport control (Linear mode stays fixed)
 
                 // Cleanup: Remove blocks that have scrolled too far left
-                // Dynamic threshold based on zoom and viewport position
-                // Both modes: 1.5x total (visible + 0.5x margin)
-                const { zoom, width, x: vpX } = State.viewport;
-                const halfWidth = width / 2;
-                const visibleLeft = vpX - halfWidth / zoom;
-                const cleanupThreshold = visibleLeft - width / zoom * 0.5;  // 0.5x margin
-
+                // Use fixed CLEANUP_THRESHOLD (X=0 at right edge, negative X goes left)
                 let removedCount = 0;
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     if (!hash) continue;
 
-                    // Check if block is too far left (past dynamic cleanup threshold)
-                    if (State.blockData.x[i] < cleanupThreshold) {
+                    // Check if block is too far left (past cleanup threshold)
+                    if (State.blockData.x[i] < CONFIG.CLEANUP_THRESHOLD) {
                         // Remove from hash map
                         State.blockHashToIndex.delete(hash);
                         // Clear the slot
