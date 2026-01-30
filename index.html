@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v227',
+            VERSION: 'v228',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3851,12 +3851,7 @@
                     const blue = Number(kd.blueWork / 1000000n);
                     const red = Number(kd.redWork / 1000000n);
                     const gray = Number((kd.grayWork || 0n) / 1000000n);
-                    html += `B:${blue}M R:${red}M G:${gray}M<br>`;
-                    // Viewport debug
-                    const vp = State.viewport;
-                    const st = State.stats;
-                    html += `vpX:${Math.round(vp.x)} z:${vp.zoom.toFixed(1)} w:${vp.width}<br>`;
-                    html += `vis:${st.visibleBlocks} edges:${st.edgeCount}`;
+                    html += `B:${blue}M R:${red}M G:${gray}M`;
                 }
                 DOM.debugInfo.innerHTML = html;
             }
