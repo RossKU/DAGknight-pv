@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v220',
+            VERSION: 'v223',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1620,7 +1620,8 @@
                         blockY = offset * direction;
                     }
 
-                    State.blockData.x[index] = columnX;
+                    // Spawn slightly right of target for left-sliding animation
+                    State.blockData.x[index] = columnX + 30;
                     State.blockData.targetX[index] = columnX;
                     State.blockData.y[index] = blockY;
                     State.blockData.targetY[index] = blockY;
@@ -3616,7 +3617,8 @@
                     blockY = offset * direction;
                 }
 
-                State.blockData.x[index] = columnX;
+                // Spawn slightly right of target for left-sliding animation
+                State.blockData.x[index] = columnX + 30;
                 State.blockData.targetX[index] = columnX;
                 State.blockData.y[index] = blockY;
                 State.blockData.targetY[index] = blockY;
