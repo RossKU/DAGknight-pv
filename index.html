@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v206',
+            VERSION: 'v207',
 
             // Display
             MAX_BLOCKS: 500,
@@ -959,6 +959,7 @@
             orderedBlocks: new Set(),  // All topologically ordered blocks (chain + ancestors)
             linearOrder: [],  // Final linearized order [hash, hash, ...]
             lccaHash: null,  // Latest Common Chain Ancestor (convergence point)
+            confirmedChainEdges: new Map(),  // Cache: hash -> [fromHash, toHash] for confirmed (blue) edges
             sortedIndices: [],  // Cached: block indices sorted by X (updated in Dagknight calc, not every frame)
             lastDagknightCalc: 0,
 
@@ -1357,6 +1358,7 @@
                 let blueDrawn = false;
                 let greenDrawn = false;
 
+                // Draw blue edges from current selectedChainEdges
                 for (const [fromHash, toHash] of State.selectedChainEdges) {
                     const idx1 = State.blockHashToIndex.get(fromHash);
                     const idx2 = State.blockHashToIndex.get(toHash);
@@ -1373,6 +1375,22 @@
                         }
                     }
                 }
+
+                // Draw cached confirmed (blue) edges - persist until blocks disappear
+                for (const [, [fromHash, toHash]] of State.confirmedChainEdges) {
+                    const idx1 = State.blockHashToIndex.get(fromHash);
+                    const idx2 = State.blockHashToIndex.get(toHash);
+                    if (idx1 !== undefined && idx2 !== undefined) {
+                        const screenX1 = (x[idx1] - vpX) * zoom + halfWidth;
+                        const screenY1 = (y[idx1] - vpY) * zoom + halfHeight;
+                        const screenX2 = (x[idx2] - vpX) * zoom + halfWidth;
+                        const screenY2 = (y[idx2] - vpY) * zoom + halfHeight;
+                        chainEdges.moveTo(screenX1, screenY1);
+                        chainEdges.lineTo(screenX2, screenY2);
+                        blueDrawn = true;
+                    }
+                }
+
                 if (blueDrawn) {
                     chainEdges.stroke({ width: 3, color: CONFIG.COLORS.BLUE_EDGE, alpha: 0.9 });
                 }
@@ -3337,6 +3355,34 @@
                 // Green edges: from ALL tips converging to LCCA
                 State.selectedChainEdges = edges;
 
+                // Cache confirmed (blue) chain edges - edges before LCCA
+                // These persist until their blocks are removed from memory
+                if (lccaHash) {
+                    const lccaIdx = State.blockHashToIndex.get(lccaHash);
+                    const lccaDaa = lccaIdx !== undefined ? State.blockData.daaScore[lccaIdx] : Infinity;
+
+                    for (const [fromHash, toHash] of edges) {
+                        const idx1 = State.blockHashToIndex.get(fromHash);
+                        const idx2 = State.blockHashToIndex.get(toHash);
+                        if (idx1 !== undefined && idx2 !== undefined) {
+                            const daa1 = State.blockData.daaScore[idx1];
+                            const daa2 = State.blockData.daaScore[idx2];
+                            // Both blocks before LCCA = confirmed edge
+                            if (daa1 < lccaDaa && daa2 < lccaDaa) {
+                                const edgeKey = `${fromHash}:${toHash}`;
+                                State.confirmedChainEdges.set(edgeKey, [fromHash, toHash]);
+                            }
+                        }
+                    }
+
+                    // Clean up cached edges whose blocks no longer exist
+                    for (const [key, [fromHash, toHash]] of State.confirmedChainEdges) {
+                        if (!State.blockHashToIndex.has(fromHash) || !State.blockHashToIndex.has(toHash)) {
+                            State.confirmedChainEdges.delete(key);
+                        }
+                    }
+                }
+
                 // Large blocks: only on main chain (bestTip's chain)
                 State.selectedChainBlocks = new Set(chainList);
                 State.orderedBlocks = orderedBlocks;
@@ -3857,6 +3903,7 @@
                         State.maxDaaScore = null;
                         State.dagColumnCount.clear();
                         State.selectedChainEdges = [];
+                        State.confirmedChainEdges.clear();
                         State.selectedChainBlocks = new Set();
                         State.linearOrder = [];
                         State.lccaHash = null;
@@ -3988,6 +4035,7 @@
                 State.maxDaaScore = null;
                 State.dagColumnCount.clear();
                 State.selectedChainEdges = [];
+                State.confirmedChainEdges.clear();
                 State.selectedChainBlocks = new Set();
                 State.linearOrder = [];
                 State.lccaHash = null;
