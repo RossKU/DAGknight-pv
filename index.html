@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v223',
+            VERSION: 'v224',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1136,9 +1136,15 @@
                 const zoom = State.viewport.zoom;
                 const newHalfWidth = newWidth / 2;
 
-                // Both modes: viewport stays at 0 (X=0 at right edge)
-                State.viewport.x = 0;
-                State.viewport.targetX = 0;
+                // DAG mode: recalculate viewport to track newest blocks
+                if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                    const margin = 150 / zoom;
+                    State.viewport.x = maxX - newHalfWidth / zoom + margin;
+                    State.viewport.targetX = State.viewport.x;
+                }
+                // Linear mode: viewport stays at 0
             });
         }
 
@@ -1598,12 +1604,9 @@
                 // Position based on view mode (same logic as addBlock)
                 const yScale = CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0;
                 if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: X based on column (DAA grouped), Y based on order in column
-                    // Newest blocks near X=0 (right edge), older blocks have negative X
+                    // DAG mode: X based on column (positive X, viewport tracks newest)
                     const column = Math.floor((originalDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const reverseColumn = maxColumn - column;  // Preserve column grouping
-                    const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;  // Newest=0, older=negative
+                    const columnX = column * CONFIG.DAA_COLUMN_WIDTH;  // Positive X: 0, 50, 100, ...
 
                     // Get block index within column for Y positioning
                     const columnKey = column;
@@ -1620,8 +1623,8 @@
                         blockY = offset * direction;
                     }
 
-                    // Spawn slightly right of target for left-sliding animation
-                    State.blockData.x[index] = columnX + 30;
+                    // Place at column position (no spawn animation, viewport tracks)
+                    State.blockData.x[index] = columnX;
                     State.blockData.targetX[index] = columnX;
                     State.blockData.y[index] = blockY;
                     State.blockData.targetY[index] = blockY;
@@ -3478,9 +3481,15 @@
                 // Assign linearIndex and targetX to linearized blocks
                 // Position blocks based on view mode
                 if (CONFIG.VIEW_MODE === 'dag') {
-                    // DAG mode: Keep newest block inside right edge (zoom-aware)
-                    // Viewport stays at 0 (X=0 at right edge, newest blocks near 0)
-                    State.viewport.targetX = 0;
+                    // DAG mode: Viewport tracks newest blocks (positive X coordinates)
+                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                        const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                        const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                        const halfWidth = State.viewport.width / 2;
+                        const zoom = State.viewport.zoom;
+                        const margin = 150 / zoom;  // 150px margin from right edge
+                        State.viewport.targetX = maxX - halfWidth / zoom + margin;
+                    }
                 } else {
                     // Linear mode: linearized blocks align to chain
                     const maxLinearIdx = linearOrder.length - 1;
@@ -3514,14 +3523,21 @@
                 // Viewport control (Linear mode stays fixed)
 
                 // Cleanup: Remove blocks that have scrolled too far left
-                // Use fixed CLEANUP_THRESHOLD (X=0 at right edge, negative X goes left)
                 let removedCount = 0;
+                const vpX = State.viewport.x;
+                const cleanupMargin = State.viewport.width * 2 / State.viewport.zoom;
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     if (!hash) continue;
 
-                    // Check if block is too far left (past cleanup threshold)
-                    if (State.blockData.x[i] < CONFIG.CLEANUP_THRESHOLD) {
+                    // Check if block is too far left of viewport
+                    // DAG mode: positive X, viewport tracks right
+                    // Linear mode: X=0 at right, negative X goes left
+                    const blockX = State.blockData.x[i];
+                    const isTooFarLeft = CONFIG.VIEW_MODE === 'dag'
+                        ? blockX < vpX - cleanupMargin
+                        : blockX < CONFIG.CLEANUP_THRESHOLD;
+                    if (isTooFarLeft) {
                         // Remove from hash map
                         State.blockHashToIndex.delete(hash);
                         // Clear the slot
@@ -3572,35 +3588,17 @@
                 State.maxDaaScore = daaScore;
             }
 
-            // Track DAA score range (for reference)
-            // When maxDaaScore increases in DAG mode, shift all existing blocks left
+            // Track DAA score range
             if (daaScore > State.maxDaaScore) {
-                if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null) {
-                    const oldMaxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const newMaxColumn = Math.floor((daaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                    const columnShift = newMaxColumn - oldMaxColumn;
-                    if (columnShift > 0) {
-                        const xShift = -columnShift * CONFIG.DAA_COLUMN_WIDTH;
-                        // Shift all existing blocks left
-                        for (let i = 0; i < State.blockCount; i++) {
-                            if (State.blockData.hashes[i]) {
-                                State.blockData.targetX[i] += xShift;
-                            }
-                        }
-                    }
-                }
                 State.maxDaaScore = daaScore;
             }
 
             // Position based on view mode
             const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
             if (CONFIG.VIEW_MODE === 'dag') {
-                // DAG mode: X based on column (DAA grouped), Y based on order in column
-                // Newest blocks near X=0 (right edge), older blocks have negative X
+                // DAG mode: X based on column (positive X, viewport tracks newest)
                 const column = Math.floor((daaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
-                const reverseColumn = maxColumn - column;  // Preserve column grouping
-                const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;
+                const columnX = column * CONFIG.DAA_COLUMN_WIDTH;  // Positive X: 0, 50, 100, ...
 
                 // Get block index within column for Y positioning
                 const columnKey = column;
@@ -3617,8 +3615,8 @@
                     blockY = offset * direction;
                 }
 
-                // Spawn slightly right of target for left-sliding animation
-                State.blockData.x[index] = columnX + 30;
+                // Place at column position (no spawn animation, viewport tracks)
+                State.blockData.x[index] = columnX;
                 State.blockData.targetX[index] = columnX;
                 State.blockData.y[index] = blockY;
                 State.blockData.targetY[index] = blockY;
@@ -4071,11 +4069,19 @@
                 window.open(`https://kaspa.stream/blocks/${hash}`, '_blank');
             });
 
-            // Zoom with X=0 (right edge) as anchor point
+            // Zoom with right edge as anchor point
             function zoomWithRightAnchor(newZoom) {
-                // X=0 stays at right edge when vpX=0, so just change zoom
-                // No viewport adjustment needed
                 State.viewport.zoom = newZoom;
+                // DAG mode: recalculate viewport to keep maxX at right edge
+                if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
+                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                    const halfWidth = State.viewport.width / 2;
+                    const margin = 150 / newZoom;
+                    State.viewport.x = maxX - halfWidth / newZoom + margin;
+                    State.viewport.targetX = State.viewport.x;
+                }
+                // Linear mode: viewport stays at 0 (X=0 at right edge)
             }
 
             DOM.btnZoomIn.addEventListener('click', () => {
@@ -4150,12 +4156,10 @@
 
                     // Second pass: assign X/Y positions
                     // Apply yScale for high BPS simulation
-                    // Newest blocks near X=0 (right edge), older blocks have negative X
+                    // Positive X coordinates, viewport tracks newest
                     const yScale = CONFIG.DUMMY.ENABLED ? (CONFIG.DUMMY.MULTIPLIER <= 2 ? 1.5 : 2.0) : 1.0;
-                    const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                     for (const [column, indices] of columnBlocks) {
-                        const reverseColumn = maxColumn - column;
-                        const columnX = -reverseColumn * CONFIG.DAA_COLUMN_WIDTH;
+                        const columnX = column * CONFIG.DAA_COLUMN_WIDTH;  // Positive X
                         indices.forEach((idx, blockIndexInColumn) => {
                             // Calculate Y: 0, +20, -20, +40, -40, ... (scaled for high BPS)
                             let blockY;
@@ -4172,8 +4176,15 @@
                         State.dagColumnCount.set(column, indices.length);
                     }
 
-                    // Viewport stays at 0 (X=0 at right edge)
-                    State.viewport.targetX = 0;
+                    // DAG mode: viewport tracks newest blocks
+                    if (State.maxDaaScore !== null && State.minDaaScore !== null) {
+                        const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                        const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
+                        const halfWidth = State.viewport.width / 2;
+                        const zoom = State.viewport.zoom;
+                        const margin = 150 / zoom;
+                        State.viewport.targetX = maxX - halfWidth / zoom + margin;
+                    }
                 } else {
                     // Linear mode: calculate correct positions using linearOrder
                     const linearOrder = State.linearOrder || [];
