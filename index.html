@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v235',
+            VERSION: 'v232',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1233,9 +1233,10 @@
             const { zoom, width, height } = State.viewport;
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
-            // X=0 at right edge (minus margin), negative X goes left
-            const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
-            const halfWidth = screenAnchorX;  // Alias for compatibility
+            // DAG mode: right edge anchor, Linear mode: center anchor (like v209)
+            const halfWidth = CONFIG.VIEW_MODE === 'dag'
+                ? width - CONFIG.RIGHT_MARGIN
+                : width / 2;
             const halfHeight = height / 2;
 
             let visibleCount = 0;
@@ -1251,11 +1252,11 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (1.5x screen margin)
-                const marginX = width * 1.5;
-                const marginY = height * 1.5;
-                if (screenX < -marginX || screenX > width + marginX ||
-                    screenY < -marginY || screenY > height + marginY) {
+                // Skip if outside viewport
+                // DAG mode: tight margins (viewport tracks), Linear mode: wide margins (blocks flow left)
+                const margin = CONFIG.VIEW_MODE === 'dag' ? 100 : width * 1.5;
+                if (screenX < -margin || screenX > width + margin ||
+                    screenY < -100 || screenY > height + 100) {
                     continue;
                 }
 
@@ -1305,11 +1306,11 @@
                 const screenX = (x[i] - vpX) * zoom + halfWidth;
                 const screenY = (y[i] - vpY) * zoom + halfHeight;
 
-                // Skip if outside viewport (1.5x screen margin)
-                const blockMarginX = width * 1.5;
-                const blockMarginY = height * 1.5;
-                if (screenX < -blockMarginX || screenX > width + blockMarginX ||
-                    screenY < -blockMarginY || screenY > height + blockMarginY) {
+                // Skip if outside viewport
+                // DAG mode: tight margins (viewport tracks), Linear mode: wide margins (blocks flow left)
+                const blockMargin = CONFIG.VIEW_MODE === 'dag' ? 50 : width * 1.5;
+                if (screenX < -blockMargin || screenX > width + blockMargin ||
+                    screenY < -50 || screenY > height + 50) {
                     continue;
                 }
 
@@ -3487,21 +3488,21 @@
                 // Viewport control (Linear mode stays fixed)
 
                 // Cleanup: Remove blocks that have scrolled too far left
-                // Dynamic threshold based on zoom and viewport (like v209)
                 let removedCount = 0;
-                const { zoom, width, x: vpX } = State.viewport;
-                const halfWidth = CONFIG.VIEW_MODE === 'dag'
-                    ? width - CONFIG.RIGHT_MARGIN
-                    : width / 2;
-                const visibleLeft = vpX - halfWidth / zoom;
-                const cleanupThreshold = visibleLeft - width / zoom * 0.5;  // 0.5x margin
-
+                const vpX = State.viewport.x;
+                const cleanupMargin = State.viewport.width * 2 / State.viewport.zoom;
                 for (let i = 0; i < State.blockCount; i++) {
                     const hash = State.blockData.hashes[i];
                     if (!hash) continue;
 
-                    // Check if block is too far left (past dynamic cleanup threshold)
-                    if (State.blockData.x[i] < cleanupThreshold) {
+                    // Check if block is too far left of viewport
+                    // DAG mode: positive X, viewport tracks right
+                    // Linear mode: X=0 at right, negative X goes left
+                    const blockX = State.blockData.x[i];
+                    const isTooFarLeft = CONFIG.VIEW_MODE === 'dag'
+                        ? blockX < vpX - cleanupMargin
+                        : blockX < CONFIG.CLEANUP_THRESHOLD;
+                    if (isTooFarLeft) {
                         // Remove from hash map
                         State.blockHashToIndex.delete(hash);
                         // Clear the slot
@@ -4270,9 +4271,12 @@
 
                         // Convert screen coords to world coords (must match renderDAG)
                         const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
-                        const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
+                        // DAG mode: right edge anchor, Linear mode: center anchor
+                        const halfWidth = CONFIG.VIEW_MODE === 'dag'
+                            ? width - CONFIG.RIGHT_MARGIN
+                            : width / 2;
                         const halfHeight = height / 2;
-                        const worldX = (tapX - screenAnchorX) / zoom + vpX;
+                        const worldX = (tapX - halfWidth) / zoom + vpX;
                         const worldY = (tapY - halfHeight) / zoom + vpY;
 
                         // Hit test: find nearest block within radius
