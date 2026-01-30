@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v218',
+            VERSION: 'v219',
 
             // Display
             MAX_BLOCKS: 500,
@@ -3571,7 +3571,22 @@
             }
 
             // Track DAA score range (for reference)
+            // When maxDaaScore increases in DAG mode, shift all existing blocks left
             if (daaScore > State.maxDaaScore) {
+                if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null) {
+                    const oldMaxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const newMaxColumn = Math.floor((daaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
+                    const columnShift = newMaxColumn - oldMaxColumn;
+                    if (columnShift > 0) {
+                        const xShift = -columnShift * CONFIG.DAA_COLUMN_WIDTH;
+                        // Shift all existing blocks left
+                        for (let i = 0; i < State.blockCount; i++) {
+                            if (State.blockData.hashes[i]) {
+                                State.blockData.targetX[i] += xShift;
+                            }
+                        }
+                    }
+                }
                 State.maxDaaScore = daaScore;
             }
 
