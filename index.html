@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v207',
+            VERSION: 'v208',
 
             // Display
             MAX_BLOCKS: 500,
@@ -1259,8 +1259,12 @@
                 if (Math.abs(y[i]) > 5) {  // Only draw edges if Y is not yet at 0
                     const parents = parentHashes[i] || [];
                     let edgesThisBlock = 0;
-                    // Limit edges per block (different limits for normal vs dummy mode)
-                    const maxPerBlock = CONFIG.DUMMY.ENABLED ? CONFIG.MAX_EDGES_PER_BLOCK_DUMMY : CONFIG.MAX_EDGES_PER_BLOCK_NORMAL;
+                    // Dynamic edges per block based on block count
+                    // 500 blocks → 1 edge, 250 blocks → 2 edges, 125 blocks → 4 edges, etc.
+                    const dynamicMax = Math.max(1, Math.ceil(CONFIG.MAX_EDGES / Math.max(1, State.blockCount)));
+                    const maxPerBlock = CONFIG.DUMMY.ENABLED
+                        ? Math.min(dynamicMax, CONFIG.MAX_EDGES_PER_BLOCK_DUMMY)
+                        : Math.min(dynamicMax, CONFIG.MAX_EDGES_PER_BLOCK_NORMAL);
                     for (const parentHash of parents) {
                         if (edgeCount >= CONFIG.MAX_EDGES) break;
                         if (edgesThisBlock >= maxPerBlock) break;
