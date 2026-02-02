@@ -3454,13 +3454,6 @@
                         const zoom = State.viewport.zoom;
                         const margin = 0;  // tip appears at screenAnchorX position
                         State.viewport.targetX = maxX + margin;
-
-                        // Debug log
-                        if (Math.random() < 0.01) {
-                            const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN_DAG;
-                            const tipScreenX = (maxX - State.viewport.targetX) * zoom + screenAnchorX;
-                            console.log(`[DAG Viewport] width=${State.viewport.width} screenAnchorX=${screenAnchorX} maxX=${maxX} vpX=${State.viewport.targetX} tipScreenX=${tipScreenX}`);
-                        }
                     }
                 } else {
                     // Linear mode: linearized blocks align to chain
@@ -3528,7 +3521,7 @@
                 }
                 State.sortedIndices.sort((a, b) => x[b] - x[a]);
             } catch (error) {
-                console.error('Dagknight calculation error:', error);
+                // Error handled silently
             }
         }
 
@@ -3717,7 +3710,6 @@
 
                 return kaspa;
             } catch (error) {
-                console.error('Failed to initialize Kaspa SDK:', error);
                 DOM.connectionStatus.textContent = 'Error: ' + error.message;
                 throw error;
             }
@@ -3745,7 +3737,7 @@
                     // Generate dummy blocks for high BPS simulation (Phase 2)
                     generateDummyBlocks(block);
                 } catch (error) {
-                    console.warn('Failed to process block:', error);
+                    // Block processing error handled silently
                 }
             });
 
@@ -4045,11 +4037,6 @@
                     const margin = 0;
                     State.viewport.x = maxX + margin;
                     State.viewport.targetX = State.viewport.x;
-
-                    // Debug log
-                    const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN_DAG;
-                    const tipScreenX = (maxX - State.viewport.x) * newZoom + screenAnchorX;
-                    console.log(`[DAG Zoom] width=${State.viewport.width} screenAnchorX=${screenAnchorX} maxX=${maxX} vpX=${State.viewport.x} zoom=${newZoom} tipScreenX=${tipScreenX}`);
                 }
                 // Linear mode: viewport stays at 0 (X=0 at right edge)
             }
