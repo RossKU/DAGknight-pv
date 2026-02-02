@@ -822,7 +822,7 @@
         // ------------------------------------------------------------
         const CONFIG = {
             // Version (for debugging screenshots)
-            VERSION: 'v238',
+            VERSION: 'v239',
 
             // Display
             MAX_BLOCKS: 500,
@@ -831,7 +831,8 @@
             BLOCK_SIZE_VIRTUAL: 12,
             LINEAR_PITCH: 10,  // X spacing between linearized blocks
             SPAWN_X: -20,  // Linear mode: spawn position (X=0 at right edge)
-            RIGHT_MARGIN: 300,  // Margin from right edge of screen
+            RIGHT_MARGIN: 50,  // Margin from right edge of screen (Linear mode)
+            RIGHT_MARGIN_DAG: 300,  // Margin from right edge of screen (DAG mode)
             DAA_PITCH: 10,  // X spacing per DAA score in DAG mode (was 50)
             DAA_GROUP: 5,   // Group DAA scores within ±5 into same column
             DAA_COLUMN_WIDTH: 50,  // X width per column (group of DAA scores)
@@ -1234,7 +1235,8 @@
             const vpX = State.viewport.x;
             const vpY = State.viewport.y;
             // X=0 at right edge (minus margin), negative X goes left
-            const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
+            const margin = CONFIG.VIEW_MODE === 'dag' ? CONFIG.RIGHT_MARGIN_DAG : CONFIG.RIGHT_MARGIN;
+            const screenAnchorX = width - margin;
             const halfWidth = screenAnchorX;  // Alias for compatibility
             const halfHeight = height / 2;
 
@@ -3449,7 +3451,7 @@
                     if (State.maxDaaScore !== null && State.minDaaScore !== null) {
                         const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                         const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN;
+                        const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN_DAG;
                         const zoom = State.viewport.zoom;
                         const margin = 600 / zoom;
                         State.viewport.targetX = maxX - screenAnchorX / zoom + margin;
@@ -3491,7 +3493,7 @@
                 let removedCount = 0;
                 const { zoom, width, x: vpX } = State.viewport;
                 const halfWidth = CONFIG.VIEW_MODE === 'dag'
-                    ? width - CONFIG.RIGHT_MARGIN
+                    ? width - CONFIG.RIGHT_MARGIN_DAG
                     : width - CONFIG.RIGHT_MARGIN;
                 const visibleLeft = vpX - halfWidth / zoom;
                 const cleanupThreshold = visibleLeft - width / zoom * 0.5;  // 0.5x margin
@@ -4034,7 +4036,7 @@
                 if (CONFIG.VIEW_MODE === 'dag' && State.maxDaaScore !== null && State.minDaaScore !== null) {
                     const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                     const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                    const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN;
+                    const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN_DAG;
                     const margin = 600 / newZoom;
                     State.viewport.x = maxX - screenAnchorX / newZoom + margin;
                     State.viewport.targetX = State.viewport.x;
@@ -4138,7 +4140,7 @@
                     if (State.maxDaaScore !== null && State.minDaaScore !== null) {
                         const maxColumn = Math.floor((State.maxDaaScore - State.minDaaScore) / CONFIG.DAA_GROUP);
                         const maxX = maxColumn * CONFIG.DAA_COLUMN_WIDTH;
-                        const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN;
+                        const screenAnchorX = State.viewport.width - CONFIG.RIGHT_MARGIN_DAG;
                         const zoom = State.viewport.zoom;
                         const margin = 600 / zoom;
                         State.viewport.targetX = maxX - screenAnchorX / zoom + margin;
@@ -4269,7 +4271,8 @@
 
                         // Convert screen coords to world coords (must match renderDAG)
                         const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
-                        const screenAnchorX = width - CONFIG.RIGHT_MARGIN;
+                        const margin = CONFIG.VIEW_MODE === 'dag' ? CONFIG.RIGHT_MARGIN_DAG : CONFIG.RIGHT_MARGIN;
+                        const screenAnchorX = width - margin;
                         const halfHeight = height / 2;
                         const worldX = (tapX - screenAnchorX) / zoom + vpX;
                         const worldY = (tapY - halfHeight) / zoom + vpY;
