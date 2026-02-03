@@ -4315,11 +4315,12 @@
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
 
-                // Convert screen coords to world coords
+                // Convert screen coords to world coords (must match renderDAG)
                 const { zoom, width, height, x: vpX, y: vpY } = State.viewport;
-                const halfWidth = width / 2;
+                const margin = CONFIG.VIEW_MODE === 'dag' ? CONFIG.RIGHT_MARGIN_DAG : CONFIG.RIGHT_MARGIN;
+                const screenAnchorX = width - margin;
                 const halfHeight = height / 2;
-                const worldX = (clickX - halfWidth) / zoom + vpX;
+                const worldX = (clickX - screenAnchorX) / zoom + vpX;
                 const worldY = (clickY - halfHeight) / zoom + vpY;
 
                 // Hit test: find nearest block within radius
